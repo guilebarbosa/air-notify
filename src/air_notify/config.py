@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,10 @@ class Zone:
     lat: float
     lon: float
     radius_m: float
+    # Optional alert text for this zone, overriding [messages] arrive/leave. Useful in
+    # languages where the wording depends on the place ("Chegou na escola", "Chegou em casa").
+    arrive: str | None = None
+    leave: str | None = None
 
 
 @dataclass(frozen=True)
@@ -79,9 +83,21 @@ class Settings:
     ntfy_server: str = "https://ntfy.sh"
     messages: Messages = Messages()
 
+    def messages_for(self, zone_name: str) -> Messages:
+        """The [messages] text, with the zone's own arrive/leave if it sets them."""
+        zone = next((z for z in self.zones if z.name == zone_name), None)
+        if zone is None:
+            return self.messages
+        return replace(
+            self.messages,
+            arrive=zone.arrive or self.messages.arrive,
+            leave=zone.leave or self.messages.leave,
+        )
+
 
 _SETTINGS_KEYS = {"poll_interval_minutes", "max_accuracy_m", "exit_buffer_m", "ntfy_server", "messages", "zones"}
-_ZONE_KEYS = {"name", "lat", "lon", "radius_m"}
+_ZONE_REQUIRED = {"name", "lat", "lon", "radius_m"}
+_ZONE_OPTIONAL = {"arrive", "leave"}
 _MESSAGE_KEYS = {"arrive", "leave", "time"}
 
 
@@ -143,23 +159,34 @@ def _parse_messages(raw: dict) -> Messages:
         raise ConfigError(msg)
     messages = Messages(**{key: str(value) for key, value in raw.items()})
     for key in _MESSAGE_KEYS:
-        try:
-            getattr(messages, key).format(zone="Zone", time="12:00")
-        except (KeyError, IndexError, ValueError) as e:
-            msg = f"[messages] {key} can only use {{zone}} and {{time}} ({type(e).__name__}: {e})"
-            raise ConfigError(msg) from None
+        _check_template(getattr(messages, key), f"[messages] {key}")
     return messages
 
 
+def _check_template(text: str, where: str) -> str:
+    try:
+        text.format(zone="Zone", time="12:00")
+    except (KeyError, IndexError, ValueError) as e:
+        msg = f"{where} can only use {{zone}} and {{time}} ({type(e).__name__}: {e})"
+        raise ConfigError(msg) from None
+    return text
+
+
 def _parse_zone(raw: dict) -> Zone:
-    if set(raw) != _ZONE_KEYS:
-        msg = f"Each zone needs exactly these keys: {', '.join(sorted(_ZONE_KEYS))}"
+    label = repr(raw.get("name", "?"))
+    if missing := _ZONE_REQUIRED - set(raw):
+        msg = f"Zone {label} is missing: {', '.join(sorted(missing))}"
+        raise ConfigError(msg)
+    if unknown := set(raw) - _ZONE_REQUIRED - _ZONE_OPTIONAL:
+        msg = f"Zone {label} has unknown keys: {', '.join(sorted(unknown))}"
         raise ConfigError(msg)
     zone = Zone(
         name=str(raw["name"]).strip(),
         lat=float(raw["lat"]),
         lon=float(raw["lon"]),
         radius_m=float(raw["radius_m"]),
+        arrive=_check_template(str(raw["arrive"]), f"Zone {label} arrive") if "arrive" in raw else None,
+        leave=_check_template(str(raw["leave"]), f"Zone {label} leave") if "leave" in raw else None,
     )
     if not zone.name:
         msg = "Zone name can't be empty"

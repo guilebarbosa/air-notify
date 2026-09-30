@@ -71,7 +71,7 @@ cp config.example.toml ~/.config/air-notify/config.toml   # then edit it
 
 Each zone is a name, coordinates and a radius. To get coordinates, right-click a spot in Google Maps and click the first line. Allow for AirTag positions often being 20–60 m off: about 100 m suits a home, and larger sites need more.
 
-The alert text can be changed (e.g. into your language) under `[messages]`.
+The alert text can be changed (e.g. into your language) under `[messages]`. A zone can also set its own `arrive` / `leave` text, which wins for that zone. That helps in languages where the wording depends on the place, e.g. "Chegou na escola" but "Chegou em casa".
 
 ### 2. Export the AirTag keys (once; the most sensitive step)
 

@@ -16,6 +16,7 @@ exit_buffer_m = 50
 # ntfy_server = "https://ntfy.sh"   # or your self-hosted server (https only)
 
 # Alert text, e.g. in your language. {zone} and {time} are filled in.
+# A zone can override arrive/leave with its own text; see the School zone below.
 # [messages]
 # arrive = "Arrived at {zone}"
 # leave = "Left {zone}"
@@ -33,3 +34,6 @@ name = "School"
 lat = 0.0
 lon = 0.0
 radius_m = 150
+# Optional, for this zone only (e.g. "Chegou na escola" / "Saiu da escola"):
+# arrive = "Arrived at school"
+# leave = "Left school"

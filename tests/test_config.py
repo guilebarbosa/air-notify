@@ -29,6 +29,8 @@ def test_defaults():
         {"zones": [{**ZONE, "lat": 0, "lon": 0}]},
         {"zones": [ZONE], "messages": {"arrive": "Hi {name}"}},
         {"zones": [ZONE], "messages": {"greeting": "Hi"}},
+        {"zones": [{**ZONE, "arrive": "Hi {name}"}]},
+        {"zones": [{**ZONE, "greeting": "Hi"}]},
     ],
 )
 def test_invalid_configs(raw):
@@ -40,6 +42,19 @@ def test_custom_messages():
     s = parse_settings({"zones": [ZONE], "messages": {"arrive": "Chegou em {zone}"}})
     assert s.messages.arrive == "Chegou em {zone}"
     assert s.messages.leave == "Left {zone}"  # unset keys keep the defaults
+
+
+def test_zone_messages_override_the_global_ones():
+    s = parse_settings(
+        {
+            "messages": {"arrive": "Chegou em {zone}", "leave": "Saiu de {zone}", "time": "Horário: {time}"},
+            "zones": [{**ZONE, "arrive": "Chegou na escola"}, {**ZONE, "name": "Casa", "lat": 52.1}],
+        }
+    )
+    school, casa = s.messages_for("School"), s.messages_for("Casa")
+    assert (school.arrive, school.leave, school.time) == ("Chegou na escola", "Saiu de {zone}", "Horário: {time}")
+    assert (casa.arrive, casa.leave) == ("Chegou em {zone}", "Saiu de {zone}")
+    assert s.messages_for("Removed zone") == s.messages
 
 
 def test_xdg_config_home(monkeypatch, tmp_path):

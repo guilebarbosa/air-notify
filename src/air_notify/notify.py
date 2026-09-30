@@ -76,7 +76,8 @@ DEFAULT_MESSAGES = Messages()
 
 
 def event_alert(event: Event, now: datetime, messages: Messages = DEFAULT_MESSAGES) -> Alert:
-    message = messages.time.format(zone=event.zone, time=format_time(event.timestamp, now))
+    fields = {"zone": event.zone, "time": format_time(event.timestamp, now)}
+    message = messages.time.format(**fields)
     if event.transition is Transition.ARRIVE:
-        return Alert(messages.arrive.format(zone=event.zone), message, ("round_pushpin",))
-    return Alert(messages.leave.format(zone=event.zone), message, ("runner",))
+        return Alert(messages.arrive.format(**fields), message, ("round_pushpin",))
+    return Alert(messages.leave.format(**fields), message, ("runner",))

@@ -74,3 +74,10 @@ def test_event_alert_uses_configured_messages():
     messages = Messages(arrive="Chegou em {zone}", leave="Saiu de {zone}", time="Horário: {time}")
     alert = event_alert(Event("Casa", Transition.LEAVE, at(12)), now=at(30), messages=messages)
     assert (alert.title, alert.message) == ("Saiu de Casa", f"Horário: {at(12).astimezone():%H:%M}")
+
+
+def test_time_placeholder_works_in_titles_too():
+    alert = event_alert(
+        Event("Park", Transition.ARRIVE, at(12)), now=at(30), messages=Messages(arrive="{zone} @ {time}")
+    )
+    assert alert.title == f"Park @ {at(12).astimezone():%H:%M}"

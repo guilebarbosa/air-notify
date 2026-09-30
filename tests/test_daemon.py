@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
 from conftest import SCHOOL, T0, north_of
 
+from air_notify.config import Settings
 from air_notify.daemon import CRASH_LIMIT, IDLE_CHECK_S, NETWORK_RETRY_S, Daemon
 from air_notify.geofence import Fix, Presence
 from air_notify.notify import Alert
@@ -99,6 +101,18 @@ async def test_polls_every_15_minutes_and_sends_events(make_daemon, tracker, not
     await daemon.tick()
     assert [a.title for a in notifier.sent] == ["Arrived at School"]
     assert daemon.state.presence["School"] is Presence.INSIDE
+
+
+async def test_events_use_the_zones_own_text(paths, tracker, notifier, clock):
+    settings = Settings(zones=(replace(SCHOOL, arrive="Chegou na escola"),))
+    daemon = Daemon(settings, paths, tracker, notifier, now=clock, jitter=lambda: 0)
+    daemon.start()
+    tracker.results = [[fix_at(clock, 500)]]
+    await daemon.tick()
+    clock.advance(15 * 60)
+    tracker.results = [[fix_at(clock, 0)]]
+    await daemon.tick()
+    assert [a.title for a in notifier.sent] == ["Chegou na escola"]
 
 
 @pytest.mark.parametrize(
