@@ -40,3 +40,6 @@ line-length = 120
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "UP", "SIM", "RUF", "S", "ASYNC"]
 ignore = ["S101", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S104"]  # tests configure the viewer to listen on 0.0.0.0

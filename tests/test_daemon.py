@@ -9,6 +9,7 @@ from conftest import SCHOOL, T0, north_of
 from air_notify.config import Settings
 from air_notify.daemon import CRASH_LIMIT, IDLE_CHECK_S, NETWORK_RETRY_S, Daemon
 from air_notify.geofence import Fix, Presence
+from air_notify.history import History
 from air_notify.notify import Alert
 from air_notify.tracker import ErrorKind, FetchError, SetupError
 
@@ -282,3 +283,33 @@ async def test_alerts_queue_while_ntfy_is_unreachable(make_daemon, tracker, noti
     clock.advance(IDLE_CHECK_S)
     await make_daemon().tick()  # also survives a restart: the queue is persisted
     assert [a.title for a in notifier.sent] == ["air-notify stopped"]
+
+
+async def test_records_each_new_report_once(settings, paths, tracker, notifier, clock):
+    history = History(paths.history, keep_days=30)
+    daemon = Daemon(settings, paths, tracker, notifier, history=history, now=clock, jitter=lambda: 0)
+    daemon.start()
+    first = fix_at(clock, 500)
+    tracker.results = [[first]]
+    await daemon.tick()
+    clock.advance(15 * 60)
+    second = fix_at(clock, 0)
+    tracker.results = [[first, second]]  # Apple returns the older report again
+    await daemon.tick()
+
+    (day, count), *_ = history.days()
+    assert count == 2
+    assert [p["acc"] for p in history.points(day)] == [first.accuracy_m, second.accuracy_m]
+
+
+async def test_history_write_failure_alerts_once_and_keeps_polling(settings, paths, tracker, notifier, clock):
+    paths.history.mkdir()  # can't open a directory for appending
+    daemon = Daemon(settings, paths, tracker, notifier, history=History(paths.history, 30), now=clock, jitter=lambda: 0)
+    daemon.start()
+    for _ in range(3):
+        tracker.results = [[fix_at(clock, 500)]]
+        await daemon.tick()
+        clock.advance(15 * 60)
+
+    assert tracker.fetches == 3
+    assert [a.title for a in notifier.sent] == ["air-notify history failed"]

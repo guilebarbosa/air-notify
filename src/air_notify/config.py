@@ -52,6 +52,10 @@ class Paths:
     def lock(self) -> Path:
         return self.root / "daemon.lock"
 
+    @property
+    def history(self) -> Path:
+        return self.root / "history.jsonl"
+
 
 @dataclass(frozen=True)
 class Zone:
@@ -75,6 +79,15 @@ class Messages:
 
 
 @dataclass(frozen=True)
+class Viewer:
+    """The map viewer. host "0.0.0.0" makes it reachable from other devices on your network."""
+
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = 8080
+
+
+@dataclass(frozen=True)
 class Settings:
     zones: tuple[Zone, ...]
     poll_interval_minutes: float = MIN_POLL_MINUTES
@@ -82,6 +95,8 @@ class Settings:
     exit_buffer_m: float = 50
     ntfy_server: str = "https://ntfy.sh"
     messages: Messages = Messages()
+    history_days: int = 0  # 0 = don't record locations
+    viewer: Viewer = Viewer()
 
     def messages_for(self, zone_name: str) -> Messages:
         """The [messages] text, with the zone's own arrive/leave if it sets them."""
@@ -95,7 +110,17 @@ class Settings:
         )
 
 
-_SETTINGS_KEYS = {"poll_interval_minutes", "max_accuracy_m", "exit_buffer_m", "ntfy_server", "messages", "zones"}
+_SETTINGS_KEYS = {
+    "poll_interval_minutes",
+    "max_accuracy_m",
+    "exit_buffer_m",
+    "ntfy_server",
+    "messages",
+    "history_days",
+    "viewer",
+    "zones",
+}
+_VIEWER_KEYS = {"enabled", "host", "port"}
 _ZONE_REQUIRED = {"name", "lat", "lon", "radius_m"}
 _ZONE_OPTIONAL = {"arrive", "leave"}
 _MESSAGE_KEYS = {"arrive", "leave", "time"}
@@ -140,6 +165,8 @@ def parse_settings(raw: dict) -> Settings:
         exit_buffer_m=float(raw.get("exit_buffer_m", 50)),
         ntfy_server=str(raw.get("ntfy_server", "https://ntfy.sh")).rstrip("/"),
         messages=_parse_messages(raw.get("messages", {})),
+        history_days=int(raw.get("history_days", 0)),
+        viewer=_parse_viewer(raw.get("viewer", {})),
     )
     if settings.poll_interval_minutes < MIN_POLL_MINUTES:
         msg = f"poll_interval_minutes must be >= {MIN_POLL_MINUTES} to protect your Apple account"
@@ -150,7 +177,28 @@ def parse_settings(raw: dict) -> Settings:
     if not settings.ntfy_server.startswith("https://"):
         msg = "ntfy_server must be an https:// URL"
         raise ConfigError(msg)
+    if not 0 <= settings.history_days <= 366:
+        msg = "history_days must be between 0 (off) and 366"
+        raise ConfigError(msg)
+    if settings.viewer.enabled and settings.history_days == 0:
+        msg = "[viewer] shows the location history, so it needs history_days > 0"
+        raise ConfigError(msg)
     return settings
+
+
+def _parse_viewer(raw: dict) -> Viewer:
+    if unknown := set(raw) - _VIEWER_KEYS:
+        msg = f"Unknown [viewer] keys: {', '.join(sorted(unknown))}"
+        raise ConfigError(msg)
+    viewer = Viewer(
+        enabled=bool(raw.get("enabled", False)),
+        host=str(raw.get("host", "127.0.0.1")),
+        port=int(raw.get("port", 8080)),
+    )
+    if not 1 <= viewer.port <= 65535:
+        msg = "[viewer] port must be between 1 and 65535"
+        raise ConfigError(msg)
+    return viewer
 
 
 def _parse_messages(raw: dict) -> Messages:

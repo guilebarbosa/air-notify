@@ -31,6 +31,10 @@ def test_defaults():
         {"zones": [ZONE], "messages": {"greeting": "Hi"}},
         {"zones": [{**ZONE, "arrive": "Hi {name}"}]},
         {"zones": [{**ZONE, "greeting": "Hi"}]},
+        {"zones": [ZONE], "history_days": -1},
+        {"zones": [ZONE], "viewer": {"enabled": True}},  # the viewer needs history
+        {"zones": [ZONE], "history_days": 30, "viewer": {"port": 0}},
+        {"zones": [ZONE], "viewer": {"bind": "0.0.0.0"}},
     ],
 )
 def test_invalid_configs(raw):
@@ -55,6 +59,13 @@ def test_zone_messages_override_the_global_ones():
     assert (school.arrive, school.leave, school.time) == ("Chegou na escola", "Saiu de {zone}", "Horário: {time}")
     assert (casa.arrive, casa.leave) == ("Chegou em {zone}", "Saiu de {zone}")
     assert s.messages_for("Removed zone") == s.messages
+
+
+def test_history_and_viewer():
+    s = parse_settings({"zones": [ZONE], "history_days": 30, "viewer": {"enabled": True, "host": "0.0.0.0"}})
+    assert s.history_days == 30
+    assert (s.viewer.enabled, s.viewer.host, s.viewer.port) == (True, "0.0.0.0", 8080)
+    assert parse_settings({"zones": [ZONE]}).viewer.host == "127.0.0.1"  # safe default
 
 
 def test_xdg_config_home(monkeypatch, tmp_path):

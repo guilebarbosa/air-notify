@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import aiohttp
+from aiohttp import web
 from findmy import (
     AsyncAppleAccount,
     FindMyAccessory,
@@ -28,11 +29,13 @@ from findmy import (
 from .config import ConfigError, Paths, Settings, load_settings
 from .daemon import acquire_lock, run_daemon
 from .geofence import Presence, classify, distance_m
+from .history import History
 from .importer import ExportFormatError, load_accessories
 from .keystore import AIRTAG, NTFY, SESSION, SecretStore, default_store
 from .notify import Alert, Notifier
 from .state import load_state
 from .tracker import FetchError, SetupError, Tracker
+from .viewer import create_app
 
 DEFAULT_NTFY_SERVER = Settings(zones=()).ntfy_server
 
@@ -328,6 +331,24 @@ def cmd_run(paths: Paths, store: SecretStore) -> int:
     return asyncio.run(run_daemon(settings, paths, store))
 
 
+def cmd_view(settings: Settings, paths: Paths) -> int:
+    """Serve the map viewer on its own (the daemon also serves it when [viewer] is enabled)."""
+    if not settings.history_days:
+        print("Location history is off: set history_days in config.toml (see config.example.toml).")
+        return 1
+    host, port = settings.viewer.host, settings.viewer.port
+    shown = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host  # noqa: S104
+    print(f"Map viewer on http://{shown}:{port} (Ctrl+C to stop)")
+    web.run_app(
+        create_app(settings, History(paths.history, settings.history_days)),
+        host=host,
+        port=port,
+        access_log=None,
+        print=None,
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="air-notify", description="AirTag arrive/leave notifications.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -349,6 +370,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("status", help="show the daemon's state")
     sub.add_parser("resume", help="resume polling after a safeguard stopped it")
+    sub.add_parser("view", help="serve the location-history map viewer on its own")
     sub.add_parser("run", help="run the daemon (used by the LaunchAgent)")
     return parser
 
@@ -387,6 +409,8 @@ def main(argv: list[str] | None = None) -> int:
                 return cmd_status(paths)
             case "resume":
                 return cmd_resume(paths)
+            case "view":
+                return cmd_view(load_settings(paths.config), paths)
             case "run":
                 return cmd_run(paths, store)
     except ConfigError as e:

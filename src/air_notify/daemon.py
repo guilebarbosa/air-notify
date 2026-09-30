@@ -17,10 +17,12 @@ import aiohttp
 from . import geofence
 from .config import Paths, Settings
 from .geofence import Fix
+from .history import History
 from .keystore import NTFY, SecretStore
 from .notify import Alert, Notifier, event_alert
 from .state import Pause, State, load_state, save_state
 from .tracker import ErrorKind, FetchError, SetupError, Tracker
+from .viewer import start_viewer
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,7 @@ class Daemon:
         tracker: TrackerLike,
         notifier: NotifierLike,
         *,
+        history: History | None = None,
         now: Callable[[], datetime] = _now,
         jitter: Callable[[], float] = lambda: random.uniform(0, POLL_JITTER_S),  # noqa: S311 (timing jitter)
     ) -> None:
@@ -66,6 +69,8 @@ class Daemon:
         self._paths = paths
         self._tracker = tracker
         self._notifier = notifier
+        self._history = history
+        self._history_failed = False
         self._now = now
         self._jitter = jitter
         self.state: State = load_state(paths.state)
@@ -177,6 +182,7 @@ class Daemon:
             self._alert(Alert("air-notify recovered", "Apple is reachable again.", ("white_check_mark",), 2))
         self.state.network_failures = 0
 
+        previous_ts = self.state.last_report_ts
         presence, last_ts, events = geofence.process(
             self.state.presence,
             self.state.last_report_ts,
@@ -190,6 +196,29 @@ class Daemon:
             logger.info("%s %s at %s", event.transition, event.zone, event.timestamp.isoformat(timespec="minutes"))
             self._alert(event_alert(event, now, self._settings.messages_for(event.zone)))
         logger.info("Poll ok: %d report(s), %d event(s)", len(fixes), len(events))
+
+        if self._history is not None:
+            # Same "new since last poll" rule as the geofence, so nothing is recorded twice.
+            new = [f for f in fixes if previous_ts is None or f.timestamp > previous_ts]
+            self._record(new, now)
+
+    def _record(self, fixes: list[Fix], now: datetime) -> None:
+        assert self._history is not None
+        try:
+            self._history.append(fixes, now)
+        except OSError as e:
+            logger.error("Couldn't write the location history: %s", e)
+            if not self._history_failed:  # once per run; polling and alerts carry on
+                self._alert(
+                    Alert(
+                        "air-notify history failed",
+                        f"Can't write the location history ({type(e).__name__}).",
+                        ("warning",),
+                    )
+                )
+            self._history_failed = True
+        else:
+            self._history_failed = False
 
     # --- safeguards & alerts ---------------------------------------------------------------
 
@@ -209,6 +238,11 @@ class Daemon:
         logger.warning("Polling stopped (%s): %s", reason, detail)
         hint = _RESUME_HINTS.get(reason, "Run `air-notify resume` when ready.")
         self._alert(Alert("air-notify stopped", f"{detail.rstrip('.')}. Polling is stopped. {hint}", ("warning",), 4))
+
+    def alert(self, alert: Alert) -> None:
+        """Queue an alert from outside the loop (sent on the next tick)."""
+        self._alert(alert)
+        self._save()
 
     def _alert(self, alert: Alert) -> None:
         self.state.pending_alerts = [*self.state.pending_alerts, alert][-MAX_PENDING_ALERTS:]
@@ -258,8 +292,24 @@ async def run_daemon(settings: Settings, paths: Paths, store: SecretStore) -> in
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as http:
         notifier = Notifier(http, settings.ntfy_server, ntfy["topic"], ntfy.get("token"))
         tracker = Tracker(store, paths.anisette_libs)
-        daemon = Daemon(settings, paths, tracker, notifier)
+        history = History(paths.history, settings.history_days) if settings.history_days else None
+        daemon = Daemon(settings, paths, tracker, notifier, history=history)
         daemon.start()
+
+        viewer = None
+        if history is not None and settings.viewer.enabled:
+            try:
+                viewer = await start_viewer(settings, history)
+            except OSError as e:  # e.g. port in use; polling matters more, so carry on
+                logger.error("Viewer: can't listen on %s:%d: %s", settings.viewer.host, settings.viewer.port, e)
+                where = f"{settings.viewer.host}:{settings.viewer.port}"
+                daemon.alert(
+                    Alert(
+                        "air-notify viewer failed",
+                        f"The map viewer can't start on {where} ({e.strerror or type(e).__name__}).",
+                        ("warning",),
+                    )
+                )
         try:
             await tracker.open()
         except SetupError as e:
@@ -294,6 +344,8 @@ async def run_daemon(settings: Settings, paths: Paths, store: SecretStore) -> in
             # next start alerts and counts it toward the crash-loop safeguard.
             if clean:
                 daemon.stop()
+            if viewer is not None:
+                await viewer.cleanup()
             await tracker.close()
             logger.info("Stopped")
     return 0

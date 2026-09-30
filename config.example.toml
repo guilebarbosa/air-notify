@@ -15,12 +15,25 @@ exit_buffer_m = 50
 
 # ntfy_server = "https://ntfy.sh"   # or your self-hosted server (https only)
 
+# Location history (optional): every report is appended to history.jsonl in the data
+# directory (plain text, mode 0600) and kept this many days. 0 = off, nothing is stored.
+history_days = 0
+
 # Alert text, e.g. in your language. {zone} and {time} are filled in.
 # A zone can override arrive/leave with its own text; see the School zone below.
 # [messages]
 # arrive = "Arrived at {zone}"
 # leave = "Left {zone}"
 # time = "Seen at {time}"
+
+# Map viewer (optional, needs history_days > 0): a web page listing the recorded days,
+# each shown on a map. Served by the daemon, or on its own with `air-notify view`.
+# host = "0.0.0.0" makes it reachable from other devices on your network, WITHOUT a
+# password: anyone on that network can see the history.
+# [viewer]
+# enabled = true
+# host = "127.0.0.1"
+# port = 8080
 
 # Right-click a spot in Apple/Google Maps to copy its coordinates.
 [[zones]]

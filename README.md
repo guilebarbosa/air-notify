@@ -14,6 +14,7 @@ It runs on macOS or Linux (e.g. a Raspberry Pi).
 | Alert text: zone name + time, **never coordinates** | ntfy | ntfy server |
 | Zones (coordinates), alert text | `~/.config/air-notify/config.toml` (0600) | Nobody |
 | Zone state, queued alerts | `~/.config/air-notify/state.json` (0600) | Nobody |
+| Location history (optional, off by default) | `~/.config/air-notify/history.jsonl` (0600, plain text) | You, in the [map viewer](#location-history-and-map-viewer-optional) |
 
 **The secret store** depends on the platform:
 - **macOS:** the Keychain, service `air-notify`.
@@ -152,6 +153,33 @@ Every safeguard that kicks in sends an ntfy alert:
 
 A stopped daemon stays stopped across restarts and reboots. Alerts that can't be delivered are queued until ntfy is reachable again.
 
+## Location history and map viewer (optional)
+
+With `history_days = 30` in `config.toml`, the daemon appends every new report to `~/.config/air-notify/history.jsonl` and deletes lines older than 30 days once a day. The file is plain text, one JSON object per line:
+
+```json
+{"t": "2026-09-30T08:12:05+02:00", "lat": 52.12345, "lon": 13.12345, "acc": 35}
+```
+
+Only reports that arrive while the daemon runs are recorded. Apple keeps just the latest few, so there's no backfill.
+
+The **map viewer** lists the recorded days. Picking one shows that day's reports, with the path, the accuracy circles and your zones, on an OpenStreetMap map. Enable it under `[viewer]` and the daemon serves it; `air-notify view` serves it on its own.
+
+```toml
+history_days = 30
+
+[viewer]
+enabled = true
+host = "0.0.0.0"   # reachable from other devices on your network; default 127.0.0.1 (this machine only)
+port = 8080
+```
+
+Then open `http://<machine>:8080`, e.g. `http://raspberrypi.local:8080`.
+
+- **No password:** with `host = "0.0.0.0"`, anyone on your network can see the history. Leave the default `127.0.0.1` to keep it to the machine itself; from elsewhere, use an SSH tunnel: `ssh -L 8080:localhost:8080 <user>@<host>`.
+- **What else your browser loads:** the page uses Leaflet from unpkg (version-pinned and integrity-checked) and map tiles from OpenStreetMap. The tile server sees which area you're looking at. The coordinates themselves only travel between the viewer and your browser.
+- **Other websites can't read it:** the viewer only answers requests addressed to an IP address, `localhost`, a `.local` name or the machine's own name. That blocks DNS rebinding, where a website you visit points its own domain at your network to read pages from devices on it.
+
 ## Moving to another machine
 
 For example, from a Mac to a Raspberry Pi. Only one machine may poll at a time.
@@ -161,15 +189,16 @@ For example, from a Mac to a Raspberry Pi. Only one machine may poll at a time.
    ```sh
    scp ~/.config/air-notify/{config.toml,ani_libs.bin} <user>@<host>:.config/air-notify/
    ```
-3. **From the old machine,** stream the AirTag keys over SSH into the new machine's secret store. They never touch the disk unencrypted, and `export-airtag` refuses to write to a screen or file.
+3. **From the old machine,** copy `~/.config/air-notify/history.jsonl` as well, if you record history.
+4. **From the old machine,** stream the AirTag keys over SSH into the new machine's secret store. They never touch the disk unencrypted, and `export-airtag` refuses to write to a screen or file.
    ```sh
    uv run air-notify export-airtag | ssh <user>@<host> '~/.local/bin/air-notify import-airtag - --yes'
    ```
-4. **Switch over:**
+5. **Switch over:**
    - stop the old daemon with `deploy/launchagent.sh uninstall` or `deploy/pi-service.sh uninstall`,
    - copy `~/.config/air-notify/state.json` to keep the current zone state,
    - run `deploy/pi-service.sh install` on the new machine (or `deploy/launchagent.sh install` on a Mac).
-5. **Once the new machine runs fine,** delete the old machine's secrets. On macOS that's the three `air-notify` items in Keychain Access; on Linux, the `*.cred` files.
+6. **Once the new machine runs fine,** delete the old machine's secrets. On macOS that's the three `air-notify` items in Keychain Access; on Linux, the `*.cred` files.
 
 ## Limitations
 
