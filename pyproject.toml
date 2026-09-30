@@ -1,0 +1,41 @@
+[project]
+name = "air-notify"
+version = "0.1.0"
+description = "AirTag arrive/leave notifications via FindMy.py, secrets in the macOS Keychain"
+authors = [
+    { name = "Guilherme Barbosa", email = "36824+guilebarbosa@users.noreply.github.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "findmy>=0.10.2,<0.11",
+    "keyring>=25.7.0",
+]
+
+[project.scripts]
+air-notify = "air_notify.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.uv]
+# Use a uv-managed interpreter: it only changes on `uv python upgrade`, never behind
+# the daemon's back (a Homebrew upgrade would break the venv and re-trigger Keychain prompts).
+python-preference = "only-managed"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP", "SIM", "RUF", "S", "ASYNC"]
+ignore = ["S101", "RUF001", "RUF002", "RUF003"]

@@ -1,0 +1,14 @@
+# Personal data and secrets: never commit
+config.toml
+*.json
+*.zip
+*.plist
+*.bin
+exports/
+
+# Python / tooling
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+dist/
