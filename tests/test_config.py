@@ -4,7 +4,7 @@ import stat
 
 import pytest
 
-from air_notify.config import ConfigError, load_settings, parse_settings
+from air_notify.config import ConfigError, Paths, load_settings, parse_settings
 
 ZONE = {"name": "School", "lat": 52.0, "lon": 5.0, "radius_m": 150}
 
@@ -27,11 +27,25 @@ def test_defaults():
         {"zones": [ZONE], "pol_interval_minutes": 20},
         {"zones": [ZONE], "ntfy_server": "http://ntfy.sh"},
         {"zones": [{**ZONE, "lat": 0, "lon": 0}]},
+        {"zones": [ZONE], "messages": {"arrive": "Hi {name}"}},
+        {"zones": [ZONE], "messages": {"greeting": "Hi"}},
     ],
 )
 def test_invalid_configs(raw):
     with pytest.raises(ConfigError):
         parse_settings(raw)
+
+
+def test_custom_messages():
+    s = parse_settings({"zones": [ZONE], "messages": {"arrive": "Chegou em {zone}"}})
+    assert s.messages.arrive == "Chegou em {zone}"
+    assert s.messages.leave == "Left {zone}"  # unset keys keep the defaults
+
+
+def test_xdg_config_home(monkeypatch, tmp_path):
+    monkeypatch.delenv("AIR_NOTIFY_HOME", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    assert Paths.default().root == tmp_path / "air-notify"
 
 
 def test_load_tightens_permissions(tmp_path):

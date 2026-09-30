@@ -9,6 +9,7 @@ from typing import Any
 
 import aiohttp
 
+from .config import Messages
 from .geofence import Event, Transition
 
 logger = logging.getLogger(__name__)
@@ -71,8 +72,11 @@ def format_time(ts: datetime, now: datetime) -> str:
     return local.strftime("%a %d %b %H:%M")
 
 
-def event_alert(event: Event, now: datetime) -> Alert:
-    when = format_time(event.timestamp, now)
+DEFAULT_MESSAGES = Messages()
+
+
+def event_alert(event: Event, now: datetime, messages: Messages = DEFAULT_MESSAGES) -> Alert:
+    message = messages.time.format(zone=event.zone, time=format_time(event.timestamp, now))
     if event.transition is Transition.ARRIVE:
-        return Alert(f"Chegou em {event.zone}", f"Horário: {when}", ("round_pushpin",))
-    return Alert(f"Saiu de {event.zone}", f"Horário: {when}", ("runner",))
+        return Alert(messages.arrive.format(zone=event.zone), message, ("round_pushpin",))
+    return Alert(messages.leave.format(zone=event.zone), message, ("runner",))

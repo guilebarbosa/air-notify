@@ -1,6 +1,7 @@
 # Copy to ~/.config/air-notify/config.toml and edit. That file is personal data
-# (home/school coordinates): air-notify keeps it at mode 0600 and it's gitignored.
-# Restart the daemon after changes: deploy/launchagent.sh restart
+# (home/school coordinates): air-notify keeps it at mode 0600.
+# Restart the daemon after changes: deploy/launchagent.sh restart (macOS)
+# or deploy/pi-service.sh restart (Linux).
 
 # Minimum 15. Faster polling has gotten Apple accounts banned.
 poll_interval_minutes = 15
@@ -13,6 +14,12 @@ max_accuracy_m = 100
 exit_buffer_m = 50
 
 # ntfy_server = "https://ntfy.sh"   # or your self-hosted server (https only)
+
+# Alert text, e.g. in your language. {zone} and {time} are filled in.
+# [messages]
+# arrive = "Arrived at {zone}"
+# leave = "Left {zone}"
+# time = "Seen at {time}"
 
 # Right-click a spot in Apple/Google Maps to copy its coordinates.
 [[zones]]

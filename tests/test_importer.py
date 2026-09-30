@@ -46,7 +46,7 @@ def test_zip_import_uses_latest_alignment_and_name(tmp_path):
                 {"lastIndexObserved": 99, "lastIndexObservationDate": datetime(2026, 9, 1)},
             ]
         },
-        {"B1": "Son's backpack"},
+        {"B1": "Backpack"},
     )
 
     (acc,) = load_accessories(path).values()
@@ -54,7 +54,7 @@ def test_zip_import_uses_latest_alignment_and_name(tmp_path):
     assert data["master_key"] == beacon["privateKey"]["key"]["data"][-28:].hex()
     assert data["alignment_index"] == 99
     assert data["alignment_date"].startswith("2026-09-01")
-    assert data["name"] == "Son's backpack"
+    assert data["name"] == "Backpack"
     assert data["paired_at"] == PAIRED.replace(tzinfo=UTC).isoformat()
 
 

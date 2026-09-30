@@ -177,7 +177,7 @@ def cmd_export_airtag(store: SecretStore) -> int:
     if not _stdout_is_pipe():
         print(
             "Refusing to write the AirTag's private keys to a terminal or file. Pipe them instead:\n"
-            "  air-notify export-airtag | ssh <user>@<pi> '~/air-notify/.venv/bin/air-notify import-airtag - --yes'",
+            "  air-notify export-airtag | ssh <user>@<pi> '~/.local/bin/air-notify import-airtag - --yes'",
             file=sys.stderr,
         )
         return 1

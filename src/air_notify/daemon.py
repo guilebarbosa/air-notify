@@ -188,7 +188,7 @@ class Daemon:
         self.state.presence, self.state.last_report_ts = presence, last_ts
         for event in events:
             logger.info("%s %s at %s", event.transition, event.zone, event.timestamp.isoformat(timespec="minutes"))
-            self._alert(event_alert(event, now))
+            self._alert(event_alert(event, now, self._settings.messages))
         logger.info("Poll ok: %d report(s), %d event(s)", len(fixes), len(events))
 
     # --- safeguards & alerts ---------------------------------------------------------------

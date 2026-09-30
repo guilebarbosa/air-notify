@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import aiohttp
 from conftest import at
 
+from air_notify.config import Messages
 from air_notify.geofence import Event, Transition
 from air_notify.notify import Alert, Notifier, event_alert
 
@@ -62,8 +63,14 @@ def test_event_alert_has_zone_and_time_only():
     arrive = event_alert(Event("School", Transition.ARRIVE, at(12)), now=at(30))
     leave = event_alert(Event("School", Transition.LEAVE, at(-24 * 60)), now=at(30))
 
-    assert arrive.title == "Chegou em School"
-    assert arrive.message == f"Horário: {at(12).astimezone():%H:%M}"
-    assert leave.title == "Saiu de School"
-    assert leave.message.startswith("Horário: ")
-    assert len(leave.message) > len("Horário: 00:00")  # includes the day when not today
+    assert arrive.title == "Arrived at School"
+    assert arrive.message == f"Seen at {at(12).astimezone():%H:%M}"
+    assert leave.title == "Left School"
+    assert leave.message.startswith("Seen at ")
+    assert len(leave.message) > len("Seen at 00:00")  # includes the day when not today
+
+
+def test_event_alert_uses_configured_messages():
+    messages = Messages(arrive="Chegou em {zone}", leave="Saiu de {zone}", time="Horário: {time}")
+    alert = event_alert(Event("Casa", Transition.LEAVE, at(12)), now=at(30), messages=messages)
+    assert (alert.title, alert.message) == ("Saiu de Casa", f"Horário: {at(12).astimezone():%H:%M}")

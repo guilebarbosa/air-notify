@@ -1,11 +1,10 @@
-# systemd user service for Linux / Raspberry Pi. Installed by deploy/pi-service.sh.
+# systemd user service for Linux / Raspberry Pi. Rendered (@APP_DIR@ = the clone) and installed by deploy/pi-service.sh.
 [Unit]
 Description=air-notify: AirTag arrive/leave notifications
-Documentation=https://github.com/guilebarbosa/air-notify
 
 [Service]
 Type=simple
-ExecStart=%h/air-notify/.venv/bin/air-notify run
+ExecStart=@APP_DIR@/.venv/bin/air-notify run
 # Like the macOS LaunchAgent: restart only after a crash (exit 0 means "needs you"),
 # at most every 5 minutes so a crash loop can't hammer Apple.
 Restart=on-failure

@@ -26,7 +26,8 @@ class Paths:
 
     @classmethod
     def default(cls) -> Paths:
-        root = Path(os.environ.get("AIR_NOTIFY_HOME") or Path.home() / ".config" / "air-notify")
+        config_home = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+        root = Path(os.environ.get("AIR_NOTIFY_HOME") or config_home / "air-notify")
         root.mkdir(mode=0o700, parents=True, exist_ok=True)
         root.chmod(0o700)
         return cls(root)
@@ -61,16 +62,27 @@ class Zone:
 
 
 @dataclass(frozen=True)
+class Messages:
+    """Alert text for zone events; `{zone}` and `{time}` are filled in."""
+
+    arrive: str = "Arrived at {zone}"
+    leave: str = "Left {zone}"
+    time: str = "Seen at {time}"
+
+
+@dataclass(frozen=True)
 class Settings:
     zones: tuple[Zone, ...]
     poll_interval_minutes: float = MIN_POLL_MINUTES
     max_accuracy_m: float = 100
     exit_buffer_m: float = 50
     ntfy_server: str = "https://ntfy.sh"
+    messages: Messages = Messages()
 
 
-_SETTINGS_KEYS = {"poll_interval_minutes", "max_accuracy_m", "exit_buffer_m", "ntfy_server", "zones"}
+_SETTINGS_KEYS = {"poll_interval_minutes", "max_accuracy_m", "exit_buffer_m", "ntfy_server", "messages", "zones"}
 _ZONE_KEYS = {"name", "lat", "lon", "radius_m"}
+_MESSAGE_KEYS = {"arrive", "leave", "time"}
 
 
 def load_settings(path: Path) -> Settings:
@@ -111,6 +123,7 @@ def parse_settings(raw: dict) -> Settings:
         max_accuracy_m=float(raw.get("max_accuracy_m", 100)),
         exit_buffer_m=float(raw.get("exit_buffer_m", 50)),
         ntfy_server=str(raw.get("ntfy_server", "https://ntfy.sh")).rstrip("/"),
+        messages=_parse_messages(raw.get("messages", {})),
     )
     if settings.poll_interval_minutes < MIN_POLL_MINUTES:
         msg = f"poll_interval_minutes must be >= {MIN_POLL_MINUTES} to protect your Apple account"
@@ -122,6 +135,20 @@ def parse_settings(raw: dict) -> Settings:
         msg = "ntfy_server must be an https:// URL"
         raise ConfigError(msg)
     return settings
+
+
+def _parse_messages(raw: dict) -> Messages:
+    if unknown := set(raw) - _MESSAGE_KEYS:
+        msg = f"Unknown [messages] keys: {', '.join(sorted(unknown))}"
+        raise ConfigError(msg)
+    messages = Messages(**{key: str(value) for key, value in raw.items()})
+    for key in _MESSAGE_KEYS:
+        try:
+            getattr(messages, key).format(zone="Zone", time="12:00")
+        except (KeyError, IndexError, ValueError) as e:
+            msg = f"[messages] {key} can only use {{zone}} and {{time}} ({type(e).__name__}: {e})"
+            raise ConfigError(msg) from None
+    return messages
 
 
 def _parse_zone(raw: dict) -> Zone:

@@ -97,7 +97,7 @@ async def test_polls_every_15_minutes_and_sends_events(make_daemon, tracker, not
     clock.advance(5 * 60)
     tracker.results = [[fix_at(clock, 0)]]
     await daemon.tick()
-    assert [a.title for a in notifier.sent] == ["Chegou em School"]
+    assert [a.title for a in notifier.sent] == ["Arrived at School"]
     assert daemon.state.presence["School"] is Presence.INSIDE
 
 
