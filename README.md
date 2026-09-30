@@ -14,6 +14,8 @@ It's a small daemon built on [FindMy.py](https://github.com/malmeloo/FindMy.py) 
 | Zones (home/school coordinates) | `~/.config/air-notify/config.toml` (0600) | Nobody |
 | Zone state, queued alerts | `~/.config/air-notify/state.json` (0600) | Nobody |
 
+On Linux (Raspberry Pi) the three Keychain items are files instead: `~/.config/air-notify/*.cred`, encrypted with `systemd-creds --user`. See [Raspberry Pi](#raspberry-pi).
+
 **Network hosts:** `gsa.apple.com`, `setup.icloud.com`, `gateway.icloud.com` and your ntfy server.
 There is one more: `anisette.dl.mikealmel.ooo`, the FindMy.py maintainer's server. It's contacted **once**, to download Apple's anisette libraries into `ani_libs.bin` (already done). It receives no account data.
 
@@ -109,7 +111,64 @@ A stopped daemon stays stopped across restarts and reboots. Alerts that can't be
 - **Sleep:** nothing is polled while the Mac sleeps.
 - **Apple changes:** changes on Apple's side occasionally break FindMy.py. Watch its releases.
 
-## Raspberry Pi (later)
+## Raspberry Pi
 
-- Use a **64-bit** OS: `unicorn` has no armv7 wheels.
-- The Pi has no Keychain. Add a `SecretStore` backend in `keystore.py`, e.g. a 0600 file owned by a dedicated user, or systemd-creds. Replace the LaunchAgent with a systemd unit.
+Runs as a systemd **user** service under your account, with no sudo.
+- **Secrets:** stored as files in `~/.config/air-notify/`, encrypted with `systemd-creds --user`. That's AES-256-GCM, using the Pi's host key and tied to your user.
+- **Limit:** a Pi has no TPM, so the host key sits on the SD card, readable only by root. This protects against other users, copied files and leaks. It doesn't protect against someone who has root or holds the SD card.
+
+**Requirements:**
+- 64-bit Raspberry Pi OS: Debian 13 or newer, with systemd 256 or newer.
+- Linger enabled, so the service runs at boot without a login: check with `loginctl show-user $USER -p Linger`, fix with `sudo loginctl enable-linger $USER`.
+
+### Setup
+
+On the Pi:
+
+```sh
+# 1. uv, from the official release (checksum-verified)
+V=0.12.19 A=uv-aarch64-unknown-linux-gnu
+curl -fsSLO https://github.com/astral-sh/uv/releases/download/$V/$A.tar.gz
+curl -fsSLO https://github.com/astral-sh/uv/releases/download/$V/$A.tar.gz.sha256
+sha256sum -c $A.tar.gz.sha256 && tar xzf $A.tar.gz && install -m 0755 $A/uv $A/uvx ~/.local/bin/
+
+# 2. code + locked dependencies (the service expects ~/air-notify)
+git clone <repo> ~/air-notify && cd ~/air-notify && uv sync --locked --no-dev
+mkdir -m 700 -p ~/.config/air-notify
+```
+
+From the Mac, copy the config and the anisette libraries:
+
+```sh
+scp ~/.config/air-notify/{config.toml,ani_libs.bin} <user>@<pi>:.config/air-notify/
+```
+
+On the Pi, log in and set up ntfy, the same way as on the Mac:
+
+```sh
+~/air-notify/.venv/bin/air-notify login
+~/air-notify/.venv/bin/air-notify set-ntfy
+```
+
+From the Mac, stream the AirTag keys over SSH into the Pi's encrypted store. The keys never touch the disk unencrypted, and the command refuses to print them to a screen or file:
+
+```sh
+uv run air-notify export-airtag | ssh <user>@<pi> '~/air-notify/.venv/bin/air-notify import-airtag - --yes'
+```
+
+Then move over. Only one machine may poll at a time:
+
+```sh
+deploy/launchagent.sh uninstall                                 # on the Mac
+scp ~/.config/air-notify/state.json <user>@<pi>:.config/air-notify/   # keeps the current zone state
+~/air-notify/deploy/pi-service.sh install                       # on the Pi
+```
+
+### On the Pi, day to day
+
+```sh
+air-notify status                           # `install` links it into ~/.local/bin
+journalctl --user -u air-notify -f          # logs
+~/air-notify/deploy/pi-service.sh update    # git pull + locked deps + restart
+~/air-notify/deploy/pi-service.sh restart   # after editing config.toml
+```

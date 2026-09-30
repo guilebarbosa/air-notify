@@ -5,8 +5,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import getpass
+import json
 import logging
+import os
 import re
+import stat
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -14,6 +17,7 @@ from pathlib import Path
 import aiohttp
 from findmy import (
     AsyncAppleAccount,
+    FindMyAccessory,
     InvalidCredentialsError,
     LocalAnisetteProvider,
     LoginState,
@@ -25,7 +29,7 @@ from .config import ConfigError, Paths, Settings, load_settings
 from .daemon import acquire_lock, run_daemon
 from .geofence import Presence, classify, distance_m
 from .importer import ExportFormatError, load_accessories
-from .keystore import AIRTAG, NTFY, SESSION, KeychainStore, SecretStore
+from .keystore import AIRTAG, NTFY, SESSION, SecretStore, default_store
 from .notify import Alert, Notifier
 from .state import load_state
 from .tracker import FetchError, SetupError, Tracker
@@ -73,7 +77,7 @@ async def cmd_login(paths: Paths, store: SecretStore) -> int:
 
         store.put(SESSION, account.to_json())
         paths.resume_flag.touch(mode=0o600)
-        print("Logged in. Session saved to the Keychain (service 'air-notify').")
+        print(f"Logged in. Session saved to {store.label}.")
         return 0
     except InvalidCredentialsError:
         print("Apple rejected the Apple ID or password. Nothing was saved.")
@@ -117,10 +121,15 @@ def cmd_import_airtag(
     delete_source: bool,
     yes: bool,
 ) -> int:
+    from_pipe = str(path) == "-"
     try:
-        accessories = load_accessories(path, alignment)
-    except (ExportFormatError, OSError, ValueError, KeyError) as e:
-        print(f"Can't read {path}: {e}")
+        if from_pipe:
+            accessories = {"stdin": FindMyAccessory.from_json(json.load(sys.stdin))}
+        else:
+            accessories = load_accessories(path, alignment)
+    except (ExportFormatError, OSError, ValueError, KeyError, TypeError) as e:
+        # Only the type for piped input: the error text could quote the key material.
+        print(f"Can't read {'the piped AirTag keys' if from_pipe else path}: {type(e).__name__ if from_pipe else e}")
         return 1
 
     if beacon is None and len(accessories) > 1:
@@ -133,14 +142,19 @@ def cmd_import_airtag(
         return 1
     accessory = accessories[beacon] if beacon else next(iter(accessories.values()))
 
-    replace_prompt = "Replace the AirTag keys already in the Keychain? [y/N] "
-    if store.get(AIRTAG) is not None and not yes and input(replace_prompt).strip().lower() != "y":
-        return 1
+    if store.get(AIRTAG) is not None and not yes:
+        if from_pipe:  # stdin is the keys, so we can't ask
+            print("AirTag keys are already saved; add --yes to replace them.")
+            return 1
+        if input("Replace the saved AirTag keys? [y/N] ").strip().lower() != "y":
+            return 1
 
     store.put(AIRTAG, accessory.to_json())
     paths.resume_flag.touch(mode=0o600)
-    print(f"Imported {accessory.name or 'the AirTag'} ({accessory.model or 'unknown model'}) into the Keychain.")
+    print(f"Imported {accessory.name or 'the AirTag'} ({accessory.model or 'unknown model'}) into {store.label}.")
 
+    if from_pipe:
+        return 0
     if delete_source:
         for p in (path, alignment):
             if p is not None:
@@ -148,6 +162,32 @@ def cmd_import_airtag(
         print("Deleted the export file(s).")
     else:
         print(f"Now delete {path} (keep a copy in 1Password first if you want a backup).")
+    return 0
+
+
+def _stdout_is_pipe() -> bool:
+    try:
+        return stat.S_ISFIFO(os.fstat(sys.stdout.fileno()).st_mode)
+    except OSError, ValueError:  # e.g. stdout replaced by an in-memory buffer
+        return False
+
+
+def cmd_export_airtag(store: SecretStore) -> int:
+    """Write the saved AirTag keys to a pipe, to move them to another machine over SSH."""
+    if not _stdout_is_pipe():
+        print(
+            "Refusing to write the AirTag's private keys to a terminal or file. Pipe them instead:\n"
+            "  air-notify export-airtag | ssh <user>@<pi> '~/air-notify/.venv/bin/air-notify import-airtag - --yes'",
+            file=sys.stderr,
+        )
+        return 1
+    data = store.get(AIRTAG)
+    if data is None:
+        print("No AirTag keys saved.", file=sys.stderr)
+        return 1
+    json.dump(data, sys.stdout)
+    sys.stdout.flush()
+    print("AirTag keys written to the pipe.", file=sys.stderr)
     return 0
 
 
@@ -175,7 +215,7 @@ async def cmd_set_ntfy(store: SecretStore, server: str) -> int:
             return 1
 
     store.put(NTFY, {"topic": topic, "token": token})
-    print("Test message sent and topic saved to the Keychain. Check your phone.")
+    print(f"Test message sent and topic saved to {store.label}. Check your phone.")
     return 0
 
 
@@ -259,7 +299,7 @@ def cmd_resume(paths: Paths) -> int:
     if load_state(paths.state).paused is not None:
         print("Resume requested; the daemon picks it up within a minute (polls keep their 15-min spacing).")
     else:
-        print("Polling isn't stopped; the daemon will just reload its Keychain items.")
+        print("Polling isn't stopped; the daemon will just reload its saved secrets.")
     return 0
 
 
@@ -292,16 +332,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="air-notify", description="AirTag arrive/leave notifications.")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("login", help="log in to Apple (interactive, with 2FA); saves the session to the Keychain")
+    sub.add_parser("login", help="log in to Apple (interactive, with 2FA) and save the session")
 
-    p = sub.add_parser("import-airtag", help="import AirTag keys from an export into the Keychain")
-    p.add_argument("path", type=Path, help="OpenTagViewer export .zip, beacon .plist, or FindMy.py .json")
+    p = sub.add_parser("import-airtag", help="import AirTag keys from an export")
+    p.add_argument("path", type=Path, help="OpenTagViewer export .zip, beacon .plist, FindMy.py .json, or - (stdin)")
     p.add_argument("--alignment", type=Path, help="KeyAlignmentRecord .plist (only with a single .plist)")
     p.add_argument("--beacon", help="which item to import when the export has several")
     p.add_argument("--delete-source", action="store_true", help="delete the export file(s) after importing")
     p.add_argument("--yes", action="store_true", help="replace existing keys without asking")
 
-    sub.add_parser("set-ntfy", help="save the ntfy topic to the Keychain and send a test message")
+    sub.add_parser("export-airtag", help="write the saved AirTag keys to a pipe (to move them over SSH)")
+    sub.add_parser("set-ntfy", help="save the ntfy topic and send a test message")
 
     p = sub.add_parser("check", help="fetch once and show where the AirTag is relative to each zone")
     p.add_argument("--force", action="store_true", help="fetch even if the daemon has stopped polling")
@@ -316,7 +357,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     setup_logging(logging.INFO if args.command == "run" else logging.WARNING)
     paths = Paths.default()
-    store = KeychainStore()
+    store = default_store(paths.root)
 
     try:
         match args.command:
@@ -332,6 +373,8 @@ def main(argv: list[str] | None = None) -> int:
                     delete_source=args.delete_source,
                     yes=args.yes,
                 )
+            case "export-airtag":
+                return cmd_export_airtag(store)
             case "set-ntfy":
                 try:
                     server = load_settings(paths.config).ntfy_server

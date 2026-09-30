@@ -1,5 +1,5 @@
 """
-Read AirTag keys from an export, in memory, so they can go straight into the Keychain.
+Read AirTag keys from an export, in memory, so they can go straight into the secret store.
 
 Supported inputs:
 - the zip from OpenTagViewer's exporter (`--no-password`): OwnedBeacons/<uuid>.plist plus
@@ -37,7 +37,7 @@ def _from_zip(path: Path) -> dict[str, FindMyAccessory]:
         try:
             plists = {PurePosixPath(n): plistlib.loads(zf.read(n)) for n in zf.namelist() if n.endswith(".plist")}
         except (RuntimeError, NotImplementedError) as e:
-            msg = "The zip is password-protected. Re-export with --no-password (it goes straight into the Keychain)."
+            msg = "The zip is password-protected. Re-export with --no-password (it goes straight into secret storage)."
             raise ExportFormatError(msg) from e
 
     beacons = {p.stem: data for p, data in plists.items() if p.parent.name == "OwnedBeacons"}

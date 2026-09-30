@@ -121,7 +121,7 @@ class Daemon:
         except FileNotFoundError:
             return
 
-        # Always reload: `login` may have written a new session to the Keychain.
+        # Always reload: `login` may have written a new session to the secret store.
         try:
             await self._tracker.reload()
         except SetupError as e:
@@ -199,7 +199,7 @@ class Daemon:
         self._save()
 
     def setup_complete(self) -> None:
-        """Keychain items are all there now; lift a setup pause (other pauses stay)."""
+        """The secrets are all saved now; lift a setup pause (other pauses stay)."""
         if self.state.paused is not None and self.state.paused.reason == "setup":
             self.state.paused = None
             self._save()
@@ -252,7 +252,7 @@ async def run_daemon(settings: Settings, paths: Paths, store: SecretStore) -> in
 
     ntfy = store.get(NTFY)
     if ntfy is None:
-        logger.error("No ntfy topic in the Keychain; can't send alerts. Run `air-notify set-ntfy`.")
+        logger.error("No ntfy topic saved; can't send alerts. Run `air-notify set-ntfy`.")
         return 0
 
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as http:

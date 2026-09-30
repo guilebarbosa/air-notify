@@ -82,11 +82,11 @@ class Tracker:
     async def open(self) -> None:
         session = self._store.get(SESSION)
         if session is None:
-            msg = "No Apple session in the Keychain. Run `air-notify login`."
+            msg = "No Apple session saved. Run `air-notify login`."
             raise SetupError(msg)
         airtag = self._store.get(AIRTAG)
         if airtag is None:
-            msg = "No AirTag keys in the Keychain. Run `air-notify import-airtag`."
+            msg = "No AirTag keys saved. Run `air-notify import-airtag`."
             raise SetupError(msg)
 
         self._account = AsyncAppleAccount.from_json(session, anisette_libs_path=self._anisette_libs)
@@ -129,7 +129,7 @@ class Tracker:
             self._store.put(SESSION, self._account.to_json())
             self._store.put(AIRTAG, self._accessory.to_json())
         except Exception:
-            logger.exception("Couldn't save the session/AirTag state to the Keychain")
+            logger.exception("Couldn't save the session/AirTag state to the secret store")
 
     def _record_http_status(self, account: AsyncAppleAccount) -> None:
         # Private FindMy.py API (pinned <0.11). If it moves, alerts just lose the HTTP status.
