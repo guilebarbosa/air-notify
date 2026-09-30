@@ -32,7 +32,7 @@ case "${1:-}" in
     systemctl --user enable --now "$UNIT"
     [[ "$(loginctl show-user "$USER" -p Linger --value)" == yes ]] \
       || echo "Note: run 'sudo loginctl enable-linger $USER' so it also runs at boot."
-    echo "Installed and started $UNIT. Logs: journalctl --user -u air-notify -f"
+    echo "Installed and started $UNIT. Logs: journalctl --user-unit air-notify -f"
     ;;
   update)
     git pull --ff-only

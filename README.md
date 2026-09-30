@@ -135,7 +135,7 @@ deploy/pi-service.sh install    # Linux: systemd user service
 ```sh
 uv run air-notify status                  # running? stopped? last report, zone states
 tail -f ~/Library/Logs/air-notify.log     # macOS logs
-journalctl --user -u air-notify -f        # Linux logs
+journalctl --user-unit air-notify -f       # Linux logs (in RAM only on Raspberry Pi OS: cleared on reboot)
 deploy/launchagent.sh restart             # macOS, after editing config.toml
 deploy/pi-service.sh restart              # Linux, after editing config.toml
 deploy/pi-service.sh update               # Linux: git pull + locked deps + restart
