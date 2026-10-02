@@ -1,5 +1,5 @@
-# Copy to ~/.config/air-notify/config.toml and edit. That file is personal data
-# (home/school coordinates): air-notify keeps it at mode 0600.
+# Copy to config.toml next to this file and edit it. config.toml is gitignored and holds
+# personal data (home/school coordinates), so air-notify keeps it at mode 0600.
 # Restart the daemon after changes: deploy/launchagent.sh restart (macOS)
 # or deploy/pi-service.sh restart (Linux).
 

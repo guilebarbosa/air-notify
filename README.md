@@ -12,7 +12,7 @@ It runs on macOS or Linux (e.g. a Raspberry Pi).
 | AirTag private keys | Secret store, item `airtag` | Nobody. Apple only receives hashes of the rotating public keys, and locations are decrypted locally |
 | ntfy topic | Secret store, item `ntfy` | ntfy server |
 | Alert text: zone name + time, **never coordinates** | ntfy | ntfy server |
-| Zones (coordinates), alert text | `~/.config/air-notify/config.toml` (0600) | Nobody |
+| Zones (coordinates), alert text, schedule | `config.toml` in your clone (0600, gitignored) | Nobody |
 | Zone state, queued alerts | `~/.config/air-notify/state.json` (0600) | Nobody |
 | Location history (optional, off by default) | `~/.config/air-notify/history.jsonl` (0600, plain text) | You, in the [map viewer](#location-history-and-map-viewer-optional) |
 
@@ -65,10 +65,18 @@ Commands below are written as `uv run air-notify …`, run inside the clone. On 
 
 ### 1. Configure your zones
 
+In the clone:
+
 ```sh
-mkdir -m 700 -p ~/.config/air-notify
-cp config.example.toml ~/.config/air-notify/config.toml   # then edit it
+cp config.example.toml config.toml   # then edit it
 ```
+
+`config.toml` is gitignored, so `git pull` never touches it. It does get deleted by `git clean -fdx`, so keep a copy if you ever run that.
+
+air-notify looks for the config in this order:
+1. `$AIR_NOTIFY_CONFIG`, if set.
+2. `config.toml` in the clone.
+3. `~/.config/air-notify/config.toml`.
 
 Each zone is a name, coordinates and a radius. To get coordinates, right-click a spot in Google Maps and click the first line. Allow for AirTag positions often being 20–60 m off: about 100 m suits a home, and larger sites need more.
 
@@ -210,9 +218,10 @@ Then open `http://<machine>:8080`, e.g. `http://raspberrypi.local:8080`.
 For example, from a Mac to a Raspberry Pi. Only one machine may poll at a time.
 
 1. **On the new machine,** [install](#install), then run `login` and `set-ntfy` there.
-2. **From the old machine,** copy the config and anisette libraries:
+2. **From the old machine,** copy the config into the new clone, and the anisette libraries into the data directory:
    ```sh
-   scp ~/.config/air-notify/{config.toml,ani_libs.bin} <user>@<host>:.config/air-notify/
+   scp config.toml <user>@<host>:<clone>/
+   scp ~/.config/air-notify/ani_libs.bin <user>@<host>:.config/air-notify/
    ```
 3. **From the old machine,** copy `~/.config/air-notify/history.jsonl` as well, if you record history.
 4. **From the old machine,** stream the AirTag keys over SSH into the new machine's secret store. They never touch the disk unencrypted, and `export-airtag` refuses to write to a screen or file.

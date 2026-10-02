@@ -4,7 +4,8 @@ import stat
 
 import pytest
 
-from air_notify.config import ConfigError, Paths, load_settings, parse_settings
+from air_notify import config
+from air_notify.config import ConfigError, Paths, find_config, load_settings, parse_settings
 
 ZONE = {"name": "School", "lat": 52.0, "lon": 5.0, "radius_m": 150}
 
@@ -80,3 +81,34 @@ def test_load_tightens_permissions(tmp_path):
     path.chmod(0o644)
     load_settings(path)
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_config_lookup_order(monkeypatch, tmp_path):
+    data_dir, clone = tmp_path / "data", tmp_path / "clone"
+    data_dir.mkdir()
+    clone.mkdir()
+    monkeypatch.delenv("AIR_NOTIFY_CONFIG", raising=False)
+    monkeypatch.setattr(config, "checkout_root", lambda: clone)
+
+    assert find_config(data_dir) == data_dir / "config.toml"  # nothing in the clone: the data dir
+
+    (clone / "config.toml").write_text("")
+    assert find_config(data_dir) == clone / "config.toml"  # the clone's wins
+
+    monkeypatch.setenv("AIR_NOTIFY_CONFIG", str(tmp_path / "elsewhere.toml"))
+    assert find_config(data_dir) == tmp_path / "elsewhere.toml"  # the env var wins over both
+
+
+def test_plain_install_uses_the_data_dir(monkeypatch, tmp_path):
+    monkeypatch.delenv("AIR_NOTIFY_CONFIG", raising=False)
+    monkeypatch.setattr(config, "checkout_root", lambda: None)
+    assert find_config(tmp_path) == tmp_path / "config.toml"
+
+
+def test_paths_without_a_config_file_default_to_the_data_dir(tmp_path):
+    assert Paths(tmp_path).config == tmp_path / "config.toml"
+
+
+def test_checkout_root_finds_this_clone():
+    root = config.checkout_root()
+    assert root is not None and (root / "pyproject.toml").is_file()

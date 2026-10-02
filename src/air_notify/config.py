@@ -22,9 +22,13 @@ class ConfigError(ValueError):
 
 @dataclass(frozen=True)
 class Paths:
-    """Everything air-notify keeps on disk. Secrets are never stored here (see keystore.py)."""
+    """
+    Where air-notify keeps its files: the data directory (state, history, anisette libs and,
+    on Linux, the encrypted secrets; see keystore.py) and the config file.
+    """
 
     root: Path
+    config_file: Path | None = None  # None: <root>/config.toml
 
     @classmethod
     def default(cls) -> Paths:
@@ -32,11 +36,11 @@ class Paths:
         root = Path(os.environ.get("AIR_NOTIFY_HOME") or config_home / "air-notify")
         root.mkdir(mode=0o700, parents=True, exist_ok=True)
         root.chmod(0o700)
-        return cls(root)
+        return cls(root, find_config(root))
 
     @property
     def config(self) -> Path:
-        return self.root / "config.toml"
+        return self.config_file or self.root / "config.toml"
 
     @property
     def state(self) -> Path:
@@ -57,6 +61,25 @@ class Paths:
     @property
     def history(self) -> Path:
         return self.root / "history.jsonl"
+
+
+def checkout_root() -> Path | None:
+    """The clone this code runs from (uv installs it in editable mode), or None for a plain install."""
+    root = Path(__file__).resolve().parents[2]  # <clone>/src/air_notify/config.py
+    return root if (root / "pyproject.toml").is_file() and (root / "src" / "air_notify").is_dir() else None
+
+
+def find_config(data_dir: Path) -> Path:
+    """$AIR_NOTIFY_CONFIG, else config.toml in the clone if there is one, else <data dir>/config.toml."""
+    if env := os.environ.get("AIR_NOTIFY_CONFIG"):
+        return Path(env).expanduser()
+    fallback = data_dir / "config.toml"
+    checkout = checkout_root()
+    if checkout is not None and (checkout / "config.toml").is_file():
+        if fallback.is_file():
+            logger.warning("Using %s; ignoring %s", checkout / "config.toml", fallback)
+        return checkout / "config.toml"
+    return fallback
 
 
 @dataclass(frozen=True)
@@ -179,7 +202,7 @@ def load_settings(path: Path) -> Settings:
     try:
         raw = tomllib.loads(path.read_text())
     except FileNotFoundError:
-        msg = f"No config at {path}. Copy config.example.toml there and edit it."
+        msg = f"No config at {path}. Copy config.example.toml to config.toml in the repo and edit it."
         raise ConfigError(msg) from None
     except tomllib.TOMLDecodeError as e:
         msg = f"Invalid TOML in {path}: {e}"
