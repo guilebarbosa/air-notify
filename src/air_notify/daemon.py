@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import fcntl
 import logging
+import os
 import random
 import signal
 from collections.abc import Callable
@@ -20,7 +21,7 @@ from .geofence import Fix
 from .history import History
 from .keystore import NTFY, SecretStore
 from .notify import Alert, Notifier, event_alert
-from .state import Pause, State, load_state, save_state
+from .state import ManualCheck, Pause, State, load_state, save_state
 from .tracker import ErrorKind, FetchError, SetupError, Tracker
 from .viewer import start_viewer
 
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 POLL_JITTER_S = 90  # only ever added to the interval, never subtracted
 IDLE_CHECK_S = 60  # how often the loop wakes to check for `resume`/`login` while waiting
 NETWORK_RETRY_S = 60  # one quick retry before calling it an outage (e.g. Wi-Fi after wake)
+MANUAL_COOLDOWN = timedelta(minutes=5)  # between a manual check and the previous check
 CRASH_WINDOW = timedelta(hours=1)
 CRASH_LIMIT = 3
 MAX_PENDING_ALERTS = 50
@@ -73,6 +75,8 @@ class Daemon:
         self._history_failed = False
         self._now = now
         self._jitter = jitter
+        self._poll_lock = asyncio.Lock()  # one Apple request at a time, scheduled or manual
+        self._flush_lock = asyncio.Lock()  # so concurrent flushes can't send an alert twice
         self.state: State = load_state(paths.state)
 
     # --- lifecycle -------------------------------------------------------------------------
@@ -110,9 +114,50 @@ class Daemon:
         if (due_in := self._due_in()) > 0:
             return due_in
 
-        await self._poll()
+        async with self._poll_lock:
+            if self.state.paused is None and self._due_in() <= 0:  # a manual check may have just run
+                await self._poll()
         await self._flush_alerts()
         return self._due_in()
+
+    async def poll_now(self) -> ManualCheck:
+        """A check you asked for. It replaces the next scheduled one, so it adds no extra load."""
+        async with self._poll_lock:
+            now = self._now()
+            last = self.state.last_poll_at
+            if self.state.paused is not None:
+                outcome = ManualCheck(now, "stopped", f"Polling is stopped: {self.state.paused.detail.rstrip('.')}")
+            elif last is not None and now - last < MANUAL_COOLDOWN:
+                minutes = int((now - last).total_seconds() // 60)
+                outcome = ManualCheck(
+                    now, "cooldown", f"Last check was {minutes} min ago; manual checks need 5 min in between."
+                )
+            else:
+                logger.info("Manual check")
+                await self._poll()
+                if self.state.paused is not None:
+                    outcome = ManualCheck(now, "failed", self.state.paused.detail)
+                elif self.state.network_failures:
+                    outcome = ManualCheck(now, "failed", "Can't reach Apple right now")
+                else:
+                    outcome = ManualCheck(now, "ok", "Checked just now")
+            self.state.last_manual = outcome
+            self._save()
+        await self._flush_alerts()
+        return outcome
+
+    def snapshot(self) -> dict[str, str | None]:
+        """For the viewer: when it last checked, when it checks next, the latest report."""
+
+        def iso(ts: datetime | None) -> str | None:
+            return ts.isoformat() if ts else None
+
+        return {
+            "last_check": iso(self.state.last_poll_at),
+            "next_check": iso(self.state.next_poll_at),
+            "latest_report": iso(self.state.last_report_ts),
+            "stopped": self.state.paused.detail if self.state.paused else None,
+        }
 
     def _due_in(self) -> float:
         if self.state.next_poll_at is None:
@@ -145,8 +190,8 @@ class Daemon:
         now = self._now()
         # Reserve the next slot *before* the request, so a crash mid-poll can't cause an
         # early re-poll after launchd restarts us.
-        interval = timedelta(minutes=self._settings.poll_interval_minutes, seconds=self._jitter())
-        self.state.next_poll_at = now + interval
+        self.state.last_poll_at = now
+        self.state.next_poll_at = self._settings.next_poll(now) + timedelta(seconds=self._jitter())
         self._save()
 
         try:
@@ -248,11 +293,13 @@ class Daemon:
         self.state.pending_alerts = [*self.state.pending_alerts, alert][-MAX_PENDING_ALERTS:]
 
     async def _flush_alerts(self) -> None:
-        if not self.state.pending_alerts:
-            return
-        remaining = await self._notifier.flush(self.state.pending_alerts)
-        if remaining != self.state.pending_alerts:
-            self.state.pending_alerts = remaining
+        async with self._flush_lock:
+            if not self.state.pending_alerts:
+                return
+            sending = self.state.pending_alerts
+            remaining = await self._notifier.flush(sending)
+            # Keep alerts queued while we were sending, after the ones that couldn't go out.
+            self.state.pending_alerts = remaining + self.state.pending_alerts[len(sending) :]
             self._save()
 
     def _save(self) -> None:
@@ -262,8 +309,8 @@ class Daemon:
 # --- process entry point ---------------------------------------------------------------------
 
 
-def acquire_lock(paths: Paths) -> IO[str] | None:
-    """Single-instance lock: two daemons would double the request rate."""
+def acquire_lock(paths: Paths, *, write_pid: bool = False) -> IO[str] | None:
+    """Single-instance lock: two daemons would double the request rate. The daemon writes its PID in it."""
     f = paths.lock.open("a")
     paths.lock.chmod(0o600)
     try:
@@ -271,7 +318,23 @@ def acquire_lock(paths: Paths) -> IO[str] | None:
     except BlockingIOError:
         f.close()
         return None
+    if write_pid:
+        f.truncate(0)
+        f.write(str(os.getpid()))
+        f.flush()
     return f
+
+
+def daemon_pid(paths: Paths) -> int | None:
+    """PID of the running daemon, or None if none is running."""
+    lock = acquire_lock(paths)
+    if lock is not None:  # we got the lock, so nobody holds it
+        lock.close()
+        return None
+    try:
+        return int(paths.lock.read_text().strip())
+    except ValueError:
+        return None
 
 
 async def run_daemon(settings: Settings, paths: Paths, store: SecretStore) -> int:
@@ -279,7 +342,7 @@ async def run_daemon(settings: Settings, paths: Paths, store: SecretStore) -> in
     Exit codes (launchd restarts only on non-zero): 0 = stopped cleanly or needs manual
     setup, 1 = transient failure worth a restart.
     """
-    lock = acquire_lock(paths)
+    lock = acquire_lock(paths, write_pid=True)
     if lock is None:
         logger.error("Another air-notify daemon is already running")
         return 0
@@ -296,10 +359,21 @@ async def run_daemon(settings: Settings, paths: Paths, store: SecretStore) -> in
         daemon = Daemon(settings, paths, tracker, notifier, history=history)
         daemon.start()
 
+        # `air-notify poll` sends SIGUSR1. Installed first thing: SIGUSR1's default action is to exit.
+        loop = asyncio.get_running_loop()
+        manual_checks: set[asyncio.Task] = set()
+
+        def on_poll_signal() -> None:
+            task = asyncio.ensure_future(daemon.poll_now())
+            manual_checks.add(task)
+            task.add_done_callback(manual_checks.discard)
+
+        loop.add_signal_handler(signal.SIGUSR1, on_poll_signal)
+
         viewer = None
         if history is not None and settings.viewer.enabled:
             try:
-                viewer = await start_viewer(settings, history)
+                viewer = await start_viewer(settings, history, daemon)
             except OSError as e:  # e.g. port in use; polling matters more, so carry on
                 logger.error("Viewer: can't listen on %s:%d: %s", settings.viewer.host, settings.viewer.port, e)
                 where = f"{settings.viewer.host}:{settings.viewer.port}"
@@ -319,7 +393,6 @@ async def run_daemon(settings: Settings, paths: Paths, store: SecretStore) -> in
             daemon.setup_complete()
 
         stop = asyncio.Event()
-        loop = asyncio.get_running_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, stop.set)
 

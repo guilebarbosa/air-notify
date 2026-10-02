@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import getpass
 import json
 import logging
 import os
 import re
+import signal
 import stat
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -27,7 +30,7 @@ from findmy import (
 )
 
 from .config import ConfigError, Paths, Settings, load_settings
-from .daemon import acquire_lock, run_daemon
+from .daemon import acquire_lock, daemon_pid, run_daemon
 from .geofence import Presence, classify, distance_m
 from .history import History
 from .importer import ExportFormatError, load_accessories
@@ -287,6 +290,8 @@ def cmd_status(paths: Paths) -> int:
         print(f"Polling: STOPPED since {fmt(state.paused.since)}: {state.paused.detail}")
     else:
         print(f"Polling: active, next poll {fmt(state.next_poll_at) if state.next_poll_at else 'now'}")
+        with contextlib.suppress(ConfigError):
+            print(f"Interval now: {load_settings(paths.config).interval_at(datetime.now()):g} min")
     if state.network_failures:
         print(f"Network: {state.network_failures} failed poll(s) in a row")
     print(f"Latest report: {fmt(state.last_report_ts)}")
@@ -295,6 +300,31 @@ def cmd_status(paths: Paths) -> int:
     if state.pending_alerts:
         print(f"{len(state.pending_alerts)} alert(s) waiting to be sent")
     return 0
+
+
+def cmd_poll(paths: Paths, *, timeout_s: float = 120) -> int:
+    """Ask the running daemon for a check right now, and print the outcome."""
+    pid = daemon_pid(paths)
+    if pid is None:
+        print("The daemon isn't running. (`air-notify check` does a one-off fetch without it.)")
+        return 1
+    asked_at = datetime.now().astimezone()
+    os.kill(pid, signal.SIGUSR1)
+    print("Checking…")
+
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        state = load_state(paths.state)
+        if state.last_manual is not None and state.last_manual.at >= asked_at:
+            print(state.last_manual.detail)
+            if state.last_report_ts is not None:
+                print(f"Latest report: {state.last_report_ts.astimezone():%H:%M}")
+            for name, presence in state.presence.items():
+                print(f"  {name}: {presence}")
+            return 0 if state.last_manual.status == "ok" else 1
+        time.sleep(1)
+    print("No answer from the daemon within 2 minutes; check its log.")
+    return 1
 
 
 def cmd_resume(paths: Paths) -> int:
@@ -371,6 +401,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("status", help="show the daemon's state")
     sub.add_parser("resume", help="resume polling after a safeguard stopped it")
     sub.add_parser("view", help="serve the location-history map viewer on its own")
+    sub.add_parser("poll", help="ask the running daemon to check right now")
     sub.add_parser("run", help="run the daemon (used by the LaunchAgent)")
     return parser
 
@@ -411,6 +442,8 @@ def main(argv: list[str] | None = None) -> int:
                 return cmd_resume(paths)
             case "view":
                 return cmd_view(load_settings(paths.config), paths)
+            case "poll":
+                return cmd_poll(paths)
             case "run":
                 return cmd_run(paths, store)
     except ConfigError as e:

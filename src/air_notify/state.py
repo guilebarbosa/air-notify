@@ -22,11 +22,22 @@ class Pause:
 
 
 @dataclass
+class ManualCheck:
+    """Outcome of a check you asked for (viewer button or `air-notify poll`)."""
+
+    at: datetime
+    status: str  # "ok" | "failed" | "cooldown" | "stopped"
+    detail: str
+
+
+@dataclass
 class State:
     presence: dict[str, Presence] = field(default_factory=dict)
     last_report_ts: datetime | None = None
     # Reserved before each request, so restarts and crash loops can't poll early.
     next_poll_at: datetime | None = None
+    last_poll_at: datetime | None = None
+    last_manual: ManualCheck | None = None
     paused: Pause | None = None
     network_failures: int = 0
     # True while the daemon runs; still True at startup means the last run died uncleanly.
@@ -50,10 +61,15 @@ def load_state(path: Path) -> State:
         return State()
 
     paused = raw.get("paused")
+    manual = raw.get("last_manual")
     return State(
         presence={name: Presence(p) for name, p in raw.get("presence", {}).items()},
         last_report_ts=_dt(raw.get("last_report_ts")),
         next_poll_at=_dt(raw.get("next_poll_at")),
+        last_poll_at=_dt(raw.get("last_poll_at")),
+        last_manual=(
+            ManualCheck(datetime.fromisoformat(manual["at"]), manual["status"], manual["detail"]) if manual else None
+        ),
         paused=Pause(paused["reason"], paused["detail"], datetime.fromisoformat(paused["since"])) if paused else None,
         network_failures=raw.get("network_failures", 0),
         running=raw.get("running", False),
@@ -67,6 +83,16 @@ def save_state(path: Path, state: State) -> None:
         "presence": {name: str(p) for name, p in state.presence.items()},
         "last_report_ts": _iso(state.last_report_ts),
         "next_poll_at": _iso(state.next_poll_at),
+        "last_poll_at": _iso(state.last_poll_at),
+        "last_manual": (
+            {
+                "at": state.last_manual.at.isoformat(),
+                "status": state.last_manual.status,
+                "detail": state.last_manual.detail,
+            }
+            if state.last_manual
+            else None
+        ),
         "paused": (
             {"reason": state.paused.reason, "detail": state.paused.detail, "since": state.paused.since.isoformat()}
             if state.paused

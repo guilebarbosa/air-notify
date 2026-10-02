@@ -6,7 +6,7 @@ from conftest import at
 
 from air_notify.geofence import Presence
 from air_notify.notify import Alert
-from air_notify.state import Pause, State, load_state, save_state
+from air_notify.state import ManualCheck, Pause, State, load_state, save_state
 
 
 def test_missing_file_gives_default_state(paths):
@@ -18,6 +18,8 @@ def test_round_trip_with_private_permissions(paths):
         presence={"School": Presence.INSIDE},
         last_report_ts=at(0),
         next_poll_at=at(15),
+        last_poll_at=at(0),
+        last_manual=ManualCheck(at(0), "ok", "Checked just now"),
         paused=Pause("apple", "Apple rate limit (HTTP 429)", at(1)),
         network_failures=2,
         running=True,

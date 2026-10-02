@@ -19,6 +19,21 @@ exit_buffer_m = 50
 # directory (plain text, mode 0600) and kept this many days. 0 = off, nothing is stored.
 history_days = 0
 
+# Optional schedule by time of day (local time). Each entry applies from its time until the
+# next one, wrapping past midnight; without entries, poll_interval_minutes applies all day.
+# Times go in quotes, and every interval must be at least 15 minutes.
+# [[intervals]]
+# time = "07:00"
+# interval = 15
+#
+# [[intervals]]
+# time = "20:00"
+# interval = 25
+#
+# [[intervals]]
+# time = "00:00"
+# interval = 30
+
 # Alert text, e.g. in your language. {zone} and {time} are filled in.
 # A zone can override arrive/leave with its own text; see the School zone below.
 # [messages]

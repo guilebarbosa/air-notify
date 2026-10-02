@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import os
 from dataclasses import replace
 from datetime import timedelta
 
@@ -7,7 +9,7 @@ import pytest
 from conftest import SCHOOL, T0, north_of
 
 from air_notify.config import Settings
-from air_notify.daemon import CRASH_LIMIT, IDLE_CHECK_S, NETWORK_RETRY_S, Daemon
+from air_notify.daemon import CRASH_LIMIT, IDLE_CHECK_S, NETWORK_RETRY_S, Daemon, acquire_lock, daemon_pid
 from air_notify.geofence import Fix, Presence
 from air_notify.history import History
 from air_notify.notify import Alert
@@ -313,3 +315,78 @@ async def test_history_write_failure_alerts_once_and_keeps_polling(settings, pat
 
     assert tracker.fetches == 3
     assert [a.title for a in notifier.sent] == ["air-notify history failed"]
+
+
+class SlowTracker(FakeTracker):
+    """Holds each fetch open briefly, to overlap a manual check with a scheduled one."""
+
+    async def fetch(self):
+        result = await super().fetch()
+        await asyncio.sleep(0.05)
+        return result
+
+
+async def test_poll_uses_the_schedule(paths, tracker, notifier, clock):
+    settings = Settings(zones=(SCHOOL,), poll_interval_minutes=25)
+    daemon = Daemon(settings, paths, tracker, notifier, now=clock, jitter=lambda: 0)
+    daemon.start()
+    assert await daemon.tick() == 25 * 60
+    assert daemon.state.last_poll_at == clock.now
+
+
+async def test_manual_check_runs_and_replaces_the_next_scheduled_one(make_daemon, tracker, clock):
+    daemon = make_daemon()
+    daemon.start()
+    await daemon.tick()
+    clock.advance(10 * 60)
+
+    outcome = await daemon.poll_now()
+    assert (outcome.status, tracker.fetches) == ("ok", 2)
+    assert daemon.state.next_poll_at == clock.now + timedelta(minutes=15)  # schedule restarts from it
+    assert daemon.state.last_manual == outcome
+
+
+async def test_manual_check_cooldown(make_daemon, tracker, clock):
+    daemon = make_daemon()
+    daemon.start()
+    await daemon.tick()
+    clock.advance(4 * 60)
+    outcome = await daemon.poll_now()
+    assert outcome.status == "cooldown" and "4 min ago" in outcome.detail
+    assert tracker.fetches == 1
+
+
+async def test_manual_check_while_stopped(make_daemon, tracker):
+    daemon = make_daemon()
+    daemon.start()
+    tracker.results = [FetchError(ErrorKind.APPLE, "Apple rate limit (HTTP 429)")]
+    await daemon.tick()
+    outcome = await daemon.poll_now()
+    assert outcome.status == "stopped" and "429" in outcome.detail
+    assert tracker.fetches == 1
+
+
+async def test_manual_and_scheduled_checks_never_overlap(settings, paths, notifier, clock):
+    tracker = SlowTracker()
+    daemon = Daemon(settings, paths, tracker, notifier, now=clock, jitter=lambda: 0)
+    daemon.start()
+    _, outcome = await asyncio.gather(daemon.tick(), daemon.poll_now())
+    assert tracker.fetches == 1  # the manual check waited, then saw the fresh result
+    assert outcome.status == "cooldown"
+
+
+async def test_concurrent_flushes_send_each_alert_once(make_daemon, notifier):
+    daemon = make_daemon()
+    daemon.start()
+    daemon.alert(Alert("one", "1"))
+    await asyncio.gather(daemon._flush_alerts(), daemon._flush_alerts())
+    assert [a.title for a in notifier.sent] == ["one"]
+
+
+def test_daemon_pid(paths):
+    assert daemon_pid(paths) is None
+    lock = acquire_lock(paths, write_pid=True)
+    try:
+        assert daemon_pid(paths) == os.getpid()
+    finally:
+        lock.close()

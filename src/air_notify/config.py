@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 import os
 import tomllib
+from collections.abc import Iterator
 from dataclasses import dataclass, replace
+from datetime import datetime, time, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -79,6 +81,14 @@ class Messages:
 
 
 @dataclass(frozen=True)
+class Interval:
+    """From `start` (local time of day) until the next entry's start, poll every `minutes`."""
+
+    start: time
+    minutes: float
+
+
+@dataclass(frozen=True)
 class Viewer:
     """The map viewer. host "0.0.0.0" makes it reachable from other devices on your network."""
 
@@ -97,6 +107,42 @@ class Settings:
     messages: Messages = Messages()
     history_days: int = 0  # 0 = don't record locations
     viewer: Viewer = Viewer()
+    intervals: tuple[Interval, ...] = ()  # sorted by start; empty = poll_interval_minutes all day
+
+    def interval_at(self, when: datetime) -> float:
+        """Poll interval (minutes) in effect at `when`, local time."""
+        if not self.intervals:
+            return self.poll_interval_minutes
+        now = when.astimezone().time()
+        current = self.intervals[-1]  # before the day's first start, yesterday's last entry still applies
+        for interval in self.intervals:
+            if interval.start <= now:
+                current = interval
+        return current.minutes
+
+    def next_poll(self, after: datetime) -> datetime:
+        """
+        When to poll next after polling at `after`.
+
+        Normally `after` + the interval in effect then. If a shorter interval starts in the
+        meantime (e.g. 30 -> 15 min at 07:00), poll at that start instead, but never sooner
+        than MIN_POLL_MINUTES after `after`.
+        """
+        current = self.interval_at(after)
+        due = after + timedelta(minutes=current)
+        floor = after + timedelta(minutes=MIN_POLL_MINUTES)
+        for start in self._starts_between(after, due):
+            if self.interval_at(start) < current:
+                due = min(due, max(start, floor))
+        return due
+
+    def _starts_between(self, after: datetime, until: datetime) -> Iterator[datetime]:
+        today = after.astimezone().date()
+        for day in (today, today + timedelta(days=1)):
+            for interval in self.intervals:
+                start = datetime.combine(day, interval.start).astimezone()  # local time, DST-aware
+                if after < start < until:
+                    yield start
 
     def messages_for(self, zone_name: str) -> Messages:
         """The [messages] text, with the zone's own arrive/leave if it sets them."""
@@ -118,8 +164,10 @@ _SETTINGS_KEYS = {
     "messages",
     "history_days",
     "viewer",
+    "intervals",
     "zones",
 }
+_INTERVAL_KEYS = {"time", "interval"}
 _VIEWER_KEYS = {"enabled", "host", "port"}
 _ZONE_REQUIRED = {"name", "lat", "lon", "radius_m"}
 _ZONE_OPTIONAL = {"arrive", "leave"}
@@ -167,6 +215,7 @@ def parse_settings(raw: dict) -> Settings:
         messages=_parse_messages(raw.get("messages", {})),
         history_days=int(raw.get("history_days", 0)),
         viewer=_parse_viewer(raw.get("viewer", {})),
+        intervals=_parse_intervals(raw.get("intervals", [])),
     )
     if settings.poll_interval_minutes < MIN_POLL_MINUTES:
         msg = f"poll_interval_minutes must be >= {MIN_POLL_MINUTES} to protect your Apple account"
@@ -184,6 +233,36 @@ def parse_settings(raw: dict) -> Settings:
         msg = "[viewer] shows the location history, so it needs history_days > 0"
         raise ConfigError(msg)
     return settings
+
+
+def _parse_intervals(raw: list) -> tuple[Interval, ...]:
+    intervals = []
+    for entry in raw:
+        if set(entry) != _INTERVAL_KEYS:
+            msg = 'Each [[intervals]] entry needs exactly: time = "HH:MM" and interval = <minutes>'
+            raise ConfigError(msg)
+        interval = Interval(_parse_time(entry["time"]), float(entry["interval"]))
+        if interval.minutes < MIN_POLL_MINUTES:
+            msg = f"[[intervals]] at {interval.start:%H:%M}: interval must be >= {MIN_POLL_MINUTES} minutes"
+            raise ConfigError(msg)
+        intervals.append(interval)
+    starts = [i.start for i in intervals]
+    if len(set(starts)) != len(starts):
+        msg = "[[intervals]] times must be unique"
+        raise ConfigError(msg)
+    return tuple(sorted(intervals, key=lambda i: i.start))
+
+
+def _parse_time(value: object) -> time:
+    if isinstance(value, time):  # a TOML local time, e.g. 07:00:00
+        return value.replace(second=0, microsecond=0)
+    if isinstance(value, str):
+        try:
+            return datetime.strptime(value.strip(), "%H:%M").time()
+        except ValueError:
+            pass
+    msg = f'[[intervals]] time must look like "07:00" (in quotes), got {value!r}'
+    raise ConfigError(msg)
 
 
 def _parse_viewer(raw: dict) -> Viewer:

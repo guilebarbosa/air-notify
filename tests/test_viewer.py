@@ -8,7 +8,8 @@ from conftest import SCHOOL, T0, north_of
 
 from air_notify.geofence import Fix
 from air_notify.history import History
-from air_notify.viewer import LEAFLET_JS_SRI, create_app, host_allowed
+from air_notify.state import ManualCheck
+from air_notify.viewer import CHECK_HEADER, LEAFLET_JS_SRI, create_app, host_allowed
 
 
 @pytest.fixture
@@ -59,3 +60,42 @@ def test_host_allowed(host, allowed):
 async def test_rebinding_host_is_refused(client):
     response = await client.get("/api/days", headers={"Host": "evil.example.com"})
     assert response.status == 421
+
+
+class FakeControls:
+    def __init__(self) -> None:
+        self.polls = 0
+
+    async def poll_now(self):
+        self.polls += 1
+        return ManualCheck(T0, "ok", "Checked just now")
+
+    def snapshot(self):
+        return {"last_check": T0.isoformat(), "next_check": None, "latest_report": T0.isoformat(), "stopped": None}
+
+
+@pytest.fixture
+async def daemon_client(settings, paths):
+    controls = FakeControls()
+    async with TestClient(TestServer(create_app(settings, History(paths.history, 30), controls))) as c:
+        c.controls = controls
+        yield c
+
+
+async def test_check_now_needs_the_header(daemon_client):
+    assert (await daemon_client.post("/api/poll")).status == 403  # what another website could send
+    assert daemon_client.controls.polls == 0
+
+    response = await daemon_client.post("/api/poll", headers={CHECK_HEADER: "1"})
+    assert (await response.json()) == {"status": "ok", "detail": "Checked just now"}
+    assert daemon_client.controls.polls == 1
+
+
+async def test_status_with_and_without_the_daemon(daemon_client, client):
+    assert (await (await daemon_client.get("/api/status")).json())["available"] is True
+    assert (await (await client.get("/api/status")).json()) == {"available": False}
+
+
+async def test_check_now_without_the_daemon(client):
+    response = await client.post("/api/poll", headers={CHECK_HEADER: "1"})
+    assert response.status == 503 and (await response.json())["status"] == "unavailable"

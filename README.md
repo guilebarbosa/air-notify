@@ -72,6 +72,26 @@ cp config.example.toml ~/.config/air-notify/config.toml   # then edit it
 
 Each zone is a name, coordinates and a radius. To get coordinates, right-click a spot in Google Maps and click the first line. Allow for AirTag positions often being 20–60 m off: about 100 m suits a home, and larger sites need more.
 
+To poll less often at night, add a schedule by time of day:
+
+```toml
+[[intervals]]
+time = "07:00"   # in quotes; TOML doesn't allow 0700
+interval = 15
+
+[[intervals]]
+time = "20:00"
+interval = 25
+
+[[intervals]]
+time = "00:00"
+interval = 30
+```
+
+- **How it applies:** each entry runs from its time until the next one, wrapping past midnight.
+- **Limit:** every interval must be at least 15 minutes.
+- **Switching to a shorter interval:** e.g. 30 → 15 at 07:00, the next check moves up to that time instead of waiting out the old interval.
+
 The alert text can be changed (e.g. into your language) under `[messages]`. A zone can also set its own `arrive` / `leave` text, which wins for that zone. That helps in languages where the wording depends on the place, e.g. "Chegou na escola" but "Chegou em casa".
 
 ### 2. Export the AirTag keys (once; the most sensitive step)
@@ -135,6 +155,7 @@ deploy/pi-service.sh install    # Linux: systemd user service
 
 ```sh
 uv run air-notify status                  # running? stopped? last report, zone states
+uv run air-notify poll                    # check right now (also a button in the map viewer)
 tail -f ~/Library/Logs/air-notify.log     # macOS logs
 journalctl --user-unit air-notify -f       # Linux logs (in RAM only on Raspberry Pi OS: cleared on reboot)
 deploy/launchagent.sh restart             # macOS, after editing config.toml
@@ -150,6 +171,10 @@ Every safeguard that kicks in sends an ntfy alert:
 | Apple returns an error (429 rate limit, 503, anything unexpected) | Stops polling | `air-notify resume` when you're ready |
 | Can't reach Apple (offline) | Retries once after 1 min, then every 15 min. One alert when the outage starts, one when it recovers | Nothing |
 | Daemon crashed and restarted | Carries on. After 3 crashes within an hour it stops polling | `air-notify resume` |
+
+**Checking right now:** `air-notify poll`, or **Check now** in the map viewer, asks the running daemon for an immediate check. The result goes into the history like any other.
+- **One request at a time:** a manual check takes the place of the next scheduled one, and it never overlaps with one.
+- **Limits:** it needs at least 5 minutes since the previous check, and it isn't available while polling is stopped.
 
 A stopped daemon stays stopped across restarts and reboots. Alerts that can't be delivered are queued until ntfy is reachable again.
 
