@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -69,6 +70,23 @@ def classify_error(exc: BaseException, last_status: int | None) -> FetchError:
     return FetchError(ErrorKind.APPLE, f"Unexpected error ({type(exc).__name__})")
 
 
+class ClockBoundAccessory(FindMyAccessory):
+    """
+    A FindMyAccessory whose key search always reaches the clock-based limit.
+
+    FindMy.py searches the rolling 15-minute keys downwards from a ceiling derived from its
+    saved alignment. A report under the daily (secondary) key can leave that alignment too
+    low, and then the tag's current keys are never requested: no new reports, while the Find
+    My app shows fresh ones (seen with an AirTag 2nd generation, every morning after a night
+    at home). A tag can't advance more than one key per 15 minutes since pairing, so that
+    count is a safe ceiling to search from.
+    """
+
+    def get_max_index(self, dt: datetime) -> int:
+        since_pairing = int((dt - self.paired_at) / self.interval) + 1
+        return max(super().get_max_index(dt), since_pairing)
+
+
 class Tracker:
     """Owns the FindMy.py account and accessory. Never starts a fresh login by itself."""
 
@@ -76,7 +94,7 @@ class Tracker:
         self._store = store
         self._anisette_libs = anisette_libs
         self._account: AsyncAppleAccount | None = None
-        self._accessory: FindMyAccessory | None = None
+        self._accessory: ClockBoundAccessory | None = None
         self._last_status: int | None = None
 
     async def open(self) -> None:
@@ -90,7 +108,7 @@ class Tracker:
             raise SetupError(msg)
 
         self._account = AsyncAppleAccount.from_json(session, anisette_libs_path=self._anisette_libs)
-        self._accessory = FindMyAccessory.from_json(airtag)
+        self._accessory = ClockBoundAccessory.from_json(airtag)
         self._record_http_status(self._account)
 
     async def reload(self) -> None:
