@@ -210,8 +210,23 @@ port = 8080
 Then open `http://<machine>:8080`, e.g. `http://raspberrypi.local:8080`.
 
 - **No password:** with `host = "0.0.0.0"`, anyone on your network can see the history. Leave the default `127.0.0.1` to keep it to the machine itself; from elsewhere, use an SSH tunnel: `ssh -L 8080:localhost:8080 <user>@<host>`.
-- **What else your browser loads:** the page uses Leaflet from unpkg (version-pinned and integrity-checked) and map tiles from OpenStreetMap. The tile server sees which area you're looking at. The coordinates themselves only travel between the viewer and your browser.
+- **What else your browser loads:** only map tiles from OpenStreetMap; Leaflet is bundled into the page. The tile server sees which area you're looking at. The coordinates themselves only travel between the viewer and your browser.
 - **Other websites can't read it:** the viewer only answers requests addressed to an IP address, `localhost`, a `.local` name or the machine's own name. That blocks DNS rebinding, where a website you visit points its own domain at your network to read pages from devices on it.
+
+### Working on the viewer UI
+
+The UI is a small Svelte + TypeScript app in `web/`. `npm run build` writes it into `src/air_notify/static/`, and those built files are committed, so the machine running air-notify never needs Node.
+
+```sh
+cd web
+npm ci                                              # once
+AIR_NOTIFY_API=http://raspberrypi.local:8080 npm run dev   # live reload, API forwarded to a running daemon
+npm run check                                       # type check
+npm run build                                       # before committing UI changes
+```
+
+- **Without a daemon:** set `AIR_NOTIFY_API` to an `air-notify view` running locally, which is the default (`http://localhost:8080`).
+- **Registry:** `web/.npmrc` pins the public npm registry, so `package-lock.json` never points at a private one.
 
 ## Moving to another machine
 

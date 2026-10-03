@@ -9,7 +9,7 @@ from conftest import SCHOOL, T0, north_of
 from air_notify.geofence import Fix
 from air_notify.history import History
 from air_notify.state import ManualCheck
-from air_notify.viewer import CHECK_HEADER, LEAFLET_JS_SRI, create_app, host_allowed
+from air_notify.viewer import CHECK_HEADER, STATIC, create_app, host_allowed
 
 
 @pytest.fixture
@@ -21,12 +21,20 @@ async def client(settings, paths):
         yield c
 
 
-async def test_page_pins_leaflet_and_sets_csp(client):
+async def test_page_and_assets_with_a_strict_csp(client):
     response = await client.get("/")
     assert response.status == 200
-    assert LEAFLET_JS_SRI in await response.text()
+    page = await response.text()
+    assert '<div id="app"></div>' in page
     csp = response.headers["Content-Security-Policy"]
-    assert "default-src 'none'" in csp and "script-src 'self' https://unpkg.com" in csp
+    assert "default-src 'none'" in csp and "script-src 'self';" in csp
+    assert "unpkg" not in csp  # Leaflet is bundled now
+    assert response.headers["Cache-Control"] == "no-store"
+
+    script = next((STATIC / "assets").glob("*.js")).name
+    asset = await client.get(f"/assets/{script}")
+    assert asset.status == 200
+    assert "immutable" in asset.headers["Cache-Control"]
 
 
 async def test_days_and_day_points(client):

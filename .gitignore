@@ -1,12 +1,14 @@
 # Personal data and secrets: never commit
 config.toml
 *.json
+!web/*.json
 *.zip
 *.plist
 *.bin
 exports/
 
 # Python / tooling
+web/node_modules/
 .venv/
 __pycache__/
 .pytest_cache/

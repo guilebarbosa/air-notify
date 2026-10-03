@@ -1,0 +1,17 @@
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  font: 14px system-ui, sans-serif;
+}
+
+#app {
+  display: flex;
+}
+
+@media (max-width: 40rem) {
+  #app {
+    flex-direction: column;
+  }
+}
