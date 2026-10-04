@@ -224,6 +224,8 @@ The default is OpenStreetMap's standard style. CARTO's styles are lighter and ca
 | `"carto-positron"` | Very light grey |
 | `"carto-dark-matter"` | Dark |
 
+Each CARTO style also comes without place-name labels: add `-nolabels`, e.g. `"carto-positron-nolabels"`.
+
 **Set it up:**
 1. Save the key with `air-notify set-map-key`. It asks at a hidden prompt, checks that CARTO accepts the key (otherwise the tiles stay watermarked), and stores it in the secret store, never in `config.toml`. `$AIR_NOTIFY_MAP_KEY` overrides the saved key, for keys injected from a secrets manager.
 2. Set `map` under `[viewer]`, then restart.

@@ -42,8 +42,11 @@ STYLES: dict[str, MapStyle] = {
         "https://tile.openstreetmap.org/{z}/{x}/{y}.png", OSM_ATTRIBUTION, "https://tile.openstreetmap.org"
     ),
     "carto-voyager": _carto("rastertiles/voyager"),
+    "carto-voyager-nolabels": _carto("rastertiles/voyager_nolabels"),
     "carto-positron": _carto("light_all"),
+    "carto-positron-nolabels": _carto("light_nolabels"),
     "carto-dark-matter": _carto("dark_all"),
+    "carto-dark-matter-nolabels": _carto("dark_nolabels"),
 }
 DEFAULT_STYLE = "osm"
 

@@ -72,3 +72,8 @@ def test_unknown_style_is_rejected():
     zone = {"name": "A", "lat": 1.0, "lon": 1.0, "radius_m": 10}
     with pytest.raises(ConfigError, match="map must be one of"):
         parse_settings({"zones": [zone], "viewer": {"map": "google"}})
+
+
+def test_label_free_variants():
+    assert STYLES["carto-positron-nolabels"].tile_url("k").startswith("https://basemaps.cartocdn.com/light_nolabels/")
+    assert all(STYLES[name].needs_key for name in STYLES if name.startswith("carto-"))

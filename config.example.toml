@@ -49,7 +49,7 @@ history_days = 0
 # enabled = true
 # host = "127.0.0.1"
 # port = 8080
-# map = "osm"   # or carto-voyager, carto-positron, carto-dark-matter (need a free CARTO key:
+# map = "osm"   # or carto-voyager, carto-positron, carto-dark-matter, each also -nolabels (need a free CARTO key:
 #                 run `air-notify set-map-key`; the key is never kept in this file)
 
 # Right-click a spot in Apple/Google Maps to copy its coordinates.
