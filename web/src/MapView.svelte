@@ -80,7 +80,7 @@
 			if (isNearPrevious) return;
 
 			// Accuracy: the area the report could really be anywhere in (±acc metres). Each is
-			// only 8% opaque, so where many reports pile up (hours at home or at Kita) they add
+			// only 8% opaque, so where many reports pile up (hours at home or at school) they add
 			// up to a darker blue patch, which is what looks like a heatmap.
 			// (`layer!`: TypeScript can't tell `layer` is still set inside this callback.)
 			L.circle([p.lat, p.lon], { radius: p.acc, stroke: false, fillOpacity: 0.08 }).addTo(layer!);
