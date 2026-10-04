@@ -210,8 +210,27 @@ port = 8080
 Then open `http://<machine>:8080`, e.g. `http://raspberrypi.local:8080`.
 
 - **No password:** with `host = "0.0.0.0"`, anyone on your network can see the history. Leave the default `127.0.0.1` to keep it to the machine itself; from elsewhere, use an SSH tunnel: `ssh -L 8080:localhost:8080 <user>@<host>`.
-- **What else your browser loads:** only map tiles from OpenStreetMap; Leaflet is bundled into the page. The tile server sees which area you're looking at. The coordinates themselves only travel between the viewer and your browser.
+- **What else your browser loads:** only map tiles, from OpenStreetMap or the provider you choose (below); Leaflet is bundled into the page. The tile server sees which area you're looking at. The coordinates themselves only travel between the viewer and your browser.
 - **Other websites can't read it:** the viewer only answers requests addressed to an IP address, `localhost`, a `.local` name or the machine's own name. That blocks DNS rebinding, where a website you visit points its own domain at your network to read pages from devices on it.
+
+### Map styles
+
+The default is OpenStreetMap's standard style. CARTO's styles are lighter and calmer behind your points, and need a free [CARTO key](https://carto.com/basemaps/apikey/):
+
+| `[viewer] map =` | Look |
+|---|---|
+| `"osm"` (default) | OpenStreetMap standard, detailed |
+| `"carto-voyager"` | Soft colours, clean labels |
+| `"carto-positron"` | Very light grey |
+| `"carto-dark-matter"` | Dark |
+
+**Set it up:**
+1. Save the key with `air-notify set-map-key`. It asks at a hidden prompt, checks that CARTO accepts the key (otherwise the tiles stay watermarked), and stores it in the secret store, never in `config.toml`. `$AIR_NOTIFY_MAP_KEY` overrides the saved key, for keys injected from a secrets manager.
+2. Set `map` under `[viewer]`, then restart.
+
+**Without a saved key,** a CARTO style falls back to OpenStreetMap and the viewer says so.
+
+**The key is visible:** it's part of every tile request your browser makes, so anyone who opens the viewer can see it. If CARTO's dashboard allows it, restrict the key to the addresses you open the viewer from.
 
 ### Working on the viewer UI
 

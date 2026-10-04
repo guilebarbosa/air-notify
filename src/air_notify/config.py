@@ -10,6 +10,8 @@ from dataclasses import dataclass, replace
 from datetime import datetime, time, timedelta
 from pathlib import Path
 
+from .maps import STYLES
+
 logger = logging.getLogger(__name__)
 
 # Polling faster than this has gotten Apple accounts banned; see README.
@@ -118,6 +120,7 @@ class Viewer:
     enabled: bool = False
     host: str = "127.0.0.1"
     port: int = 8080
+    map: str = "osm"  # a key of maps.STYLES
 
 
 @dataclass(frozen=True)
@@ -191,7 +194,7 @@ _SETTINGS_KEYS = {
     "zones",
 }
 _INTERVAL_KEYS = {"time", "interval"}
-_VIEWER_KEYS = {"enabled", "host", "port"}
+_VIEWER_KEYS = {"enabled", "host", "port", "map"}
 _ZONE_REQUIRED = {"name", "lat", "lon", "radius_m"}
 _ZONE_OPTIONAL = {"arrive", "leave"}
 _MESSAGE_KEYS = {"arrive", "leave", "time"}
@@ -296,7 +299,11 @@ def _parse_viewer(raw: dict) -> Viewer:
         enabled=bool(raw.get("enabled", False)),
         host=str(raw.get("host", "127.0.0.1")),
         port=int(raw.get("port", 8080)),
+        map=str(raw.get("map", "osm")),
     )
+    if viewer.map not in STYLES:
+        msg = f"[viewer] map must be one of: {', '.join(STYLES)}"
+        raise ConfigError(msg)
     if not 1 <= viewer.port <= 65535:
         msg = "[viewer] port must be between 1 and 65535"
         raise ConfigError(msg)

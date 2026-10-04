@@ -19,30 +19,35 @@ from aiohttp import web
 
 from .config import Settings
 from .history import History
+from .maps import DEFAULT_STYLE, STYLES
 from .state import ManualCheck
 
 logger = logging.getLogger(__name__)
 
 # `npm run build` in web/ writes here; the files are committed so deployments don't need Node.
 STATIC = Path(__file__).parent / "static"
-TILES = "https://tile.openstreetmap.org"
 
 # Required on POSTs. Browsers won't let another website send a custom header here without
 # a CORS preflight, which this server never approves, so other sites can't trigger checks.
 CHECK_HEADER = "X-Air-Notify"
 
-CSP = "; ".join(
-    (
-        "default-src 'none'",
-        "script-src 'self'",
-        "style-src 'self' 'unsafe-inline'",  # Leaflet positions elements with inline styles
-        f"img-src 'self' data: {TILES}",
-        "connect-src 'self'",
-        "base-uri 'none'",
-        "form-action 'none'",
-        "frame-ancestors 'none'",
+
+def content_security_policy(*tile_hosts: str) -> str:
+    return "; ".join(
+        (
+            "default-src 'none'",
+            "script-src 'self'",
+            "style-src 'self' 'unsafe-inline'",  # Leaflet positions elements with inline styles
+            f"img-src 'self' data: {' '.join(sorted(set(tile_hosts)))}",
+            "connect-src 'self'",
+            "base-uri 'none'",
+            "form-action 'none'",
+            "frame-ancestors 'none'",
+        )
     )
-)
+
+
+CSP_KEY = web.AppKey("csp", str)
 
 
 class Controls(Protocol):
@@ -81,7 +86,7 @@ async def _guard(
     if request.method == "POST" and request.headers.get(CHECK_HEADER) != "1":
         return web.Response(status=403, text="Forbidden")
     response = await handler(request)
-    response.headers["Content-Security-Policy"] = CSP
+    response.headers["Content-Security-Policy"] = request.app[CSP_KEY]
     response.headers["X-Content-Type-Options"] = "nosniff"
     # Built assets have content hashes in their names, so they can be cached for good.
     immutable = request.path.startswith("/assets/")
@@ -89,8 +94,16 @@ async def _guard(
     return response
 
 
-def create_app(settings: Settings, history: History, controls: Controls | None = None) -> web.Application:
+def create_app(
+    settings: Settings,
+    history: History,
+    controls: Controls | None = None,
+    map_key: Callable[[], str | None] = lambda: None,
+) -> web.Application:
+    """`map_key` is called per request, so a key saved with `air-notify set-map-key` works without a restart."""
     zones = [{"name": z.name, "lat": z.lat, "lon": z.lon, "radius_m": z.radius_m} for z in settings.zones]
+    style = STYLES[settings.viewer.map]
+    fallback = STYLES[DEFAULT_STYLE]
 
     async def index(_: web.Request) -> web.StreamResponse:
         page = STATIC / "index.html"
@@ -108,6 +121,24 @@ def create_app(settings: Settings, history: History, controls: Controls | None =
             raise web.HTTPBadRequest(text="Expected a date like 2026-09-30") from None
         return web.json_response({"date": which.isoformat(), "points": history.points(which), "zones": zones})
 
+    async def map_tiles(_: web.Request) -> web.Response:
+        # The key necessarily reaches the browser (it's part of every tile URL); never log it.
+        chosen, warning = style, None
+        key = map_key() if style.needs_key else None
+        if style.needs_key and not key:
+            chosen = fallback
+            warning = (
+                f"No map key saved for {settings.viewer.map}; showing OpenStreetMap. Run `air-notify set-map-key`."
+            )
+        return web.json_response(
+            {
+                "url": chosen.tile_url(key),
+                "attribution": chosen.attribution,
+                "maxZoom": chosen.max_zoom,
+                "warning": warning,
+            }
+        )
+
     async def status(_: web.Request) -> web.Response:
         if controls is None:
             return web.json_response({"available": False})
@@ -123,19 +154,26 @@ def create_app(settings: Settings, history: History, controls: Controls | None =
         return web.json_response({"status": outcome.status, "detail": outcome.detail})
 
     app = web.Application(middlewares=[_guard])
+    app[CSP_KEY] = content_security_policy(style.host, fallback.host)
     app.router.add_get("/", index)
     if (STATIC / "assets").is_dir():
         app.router.add_static("/assets", STATIC / "assets")
     app.router.add_get("/api/days", days)
     app.router.add_get("/api/days/{day}", day)
+    app.router.add_get("/api/map", map_tiles)
     app.router.add_get("/api/status", status)
     app.router.add_post("/api/poll", poll)
     return app
 
 
-async def start_viewer(settings: Settings, history: History, controls: Controls | None = None) -> web.AppRunner:
+async def start_viewer(
+    settings: Settings,
+    history: History,
+    controls: Controls | None = None,
+    map_key: Callable[[], str | None] = lambda: None,
+) -> web.AppRunner:
     """Start serving in the running event loop. Raises OSError if the port can't be bound."""
-    runner = web.AppRunner(create_app(settings, history, controls), access_log=None)
+    runner = web.AppRunner(create_app(settings, history, controls, map_key), access_log=None)
     await runner.setup()
     try:
         await web.TCPSite(runner, settings.viewer.host, settings.viewer.port).start()

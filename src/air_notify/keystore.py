@@ -28,6 +28,7 @@ SERVICE = "air-notify"
 SESSION = "apple-session"  # FindMy.py account state: password, iCloud tokens, device identity
 AIRTAG = "airtag"  # FindMy.py accessory: private keys + key-rotation alignment
 NTFY = "ntfy"  # {"topic": ..., "token": ...}; whoever knows the topic can read the alerts
+MAP_KEY = "map-key"  # {"key": ...}; map tile provider key (e.g. CARTO), sent with tile requests
 
 
 class SecretStore(Protocol):

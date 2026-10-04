@@ -20,6 +20,7 @@ from .config import Paths, Settings
 from .geofence import Fix
 from .history import History
 from .keystore import NTFY, SecretStore
+from .maps import map_key
 from .notify import Alert, Notifier, event_alert
 from .state import ManualCheck, Pause, State, load_state, save_state
 from .tracker import ErrorKind, FetchError, SetupError, Tracker
@@ -373,7 +374,7 @@ async def run_daemon(settings: Settings, paths: Paths, store: SecretStore) -> in
         viewer = None
         if history is not None and settings.viewer.enabled:
             try:
-                viewer = await start_viewer(settings, history, daemon)
+                viewer = await start_viewer(settings, history, daemon, lambda: map_key(store))
             except OSError as e:  # e.g. port in use; polling matters more, so carry on
                 logger.error("Viewer: can't listen on %s:%d: %s", settings.viewer.host, settings.viewer.port, e)
                 where = f"{settings.viewer.host}:{settings.viewer.port}"

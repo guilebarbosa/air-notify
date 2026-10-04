@@ -34,7 +34,8 @@ from .daemon import acquire_lock, daemon_pid, run_daemon
 from .geofence import Presence, classify, distance_m
 from .history import History
 from .importer import ExportFormatError, load_accessories
-from .keystore import AIRTAG, NTFY, SESSION, SecretStore, default_store
+from .keystore import AIRTAG, MAP_KEY, NTFY, SESSION, SecretStore, default_store
+from .maps import STYLES, map_key
 from .notify import Alert, Notifier
 from .state import load_state
 from .tracker import FetchError, SetupError, Tracker
@@ -225,6 +226,38 @@ async def cmd_set_ntfy(store: SecretStore, server: str) -> int:
     return 0
 
 
+async def cmd_set_map_key(store: SecretStore, style_name: str) -> int:
+    """Save the map tile key after checking the provider accepts it. Never prints the key or tile URLs."""
+    style = STYLES[style_name if STYLES[style_name].needs_key else "carto-voyager"]
+    key = (await asyncio.to_thread(getpass.getpass, "Map key (hidden): ")).strip()
+    if not key or any(ch.isspace() for ch in key):
+        print("That doesn't look like a key. Nothing was saved.")
+        return 1
+
+    async def tile(url: str) -> bytes:
+        async with http.get(url.replace("{z}/{x}/{y}{r}", "3/4/2")) as response:
+            response.raise_for_status()
+            return await response.read()
+
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as http:
+        try:
+            # Without a valid key the provider answers with a watermark image, so compare the two.
+            with_key, without_key = await tile(style.tile_url(key)), await tile(style.tile_url(None))
+        except aiohttp.ClientResponseError as e:
+            print(f"The map provider rejected the key (HTTP {e.status}). Nothing was saved.")
+            return 1
+        except (aiohttp.ClientError, TimeoutError) as e:
+            print(f"Couldn't reach the map provider ({type(e).__name__}). Nothing was saved.")
+            return 1
+    if with_key == without_key:
+        print("The map provider didn't accept the key (its tiles are still watermarked). Nothing was saved.")
+        return 1
+
+    store.put(MAP_KEY, {"key": key})
+    print(f"Map key saved to {store.label}. Reload the viewer; no restart needed.")
+    return 0
+
+
 # --- check / status / resume -----------------------------------------------------------------
 
 
@@ -361,7 +394,7 @@ def cmd_run(paths: Paths, store: SecretStore) -> int:
     return asyncio.run(run_daemon(settings, paths, store))
 
 
-def cmd_view(settings: Settings, paths: Paths) -> int:
+def cmd_view(settings: Settings, paths: Paths, store: SecretStore) -> int:
     """Serve the map viewer on its own (the daemon also serves it when [viewer] is enabled)."""
     if not settings.history_days:
         print("Location history is off: set history_days in config.toml (see config.example.toml).")
@@ -370,7 +403,7 @@ def cmd_view(settings: Settings, paths: Paths) -> int:
     shown = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host  # noqa: S104
     print(f"Map viewer on http://{shown}:{port} (Ctrl+C to stop)")
     web.run_app(
-        create_app(settings, History(paths.history, settings.history_days)),
+        create_app(settings, History(paths.history, settings.history_days), map_key=lambda: map_key(store)),
         host=host,
         port=port,
         access_log=None,
@@ -394,6 +427,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("export-airtag", help="write the saved AirTag keys to a pipe (to move them over SSH)")
     sub.add_parser("set-ntfy", help="save the ntfy topic and send a test message")
+    sub.add_parser("set-map-key", help="save the map tile key (e.g. CARTO) for the viewer, after checking it works")
 
     p = sub.add_parser("check", help="fetch once and show where the AirTag is relative to each zone")
     p.add_argument("--force", action="store_true", help="fetch even if the daemon has stopped polling")
@@ -434,6 +468,12 @@ def main(argv: list[str] | None = None) -> int:
                 except ConfigError:
                     server = DEFAULT_NTFY_SERVER
                 return asyncio.run(cmd_set_ntfy(store, server))
+            case "set-map-key":
+                try:
+                    style_name = load_settings(paths.config).viewer.map
+                except ConfigError:
+                    style_name = "carto-voyager"
+                return asyncio.run(cmd_set_map_key(store, style_name))
             case "check":
                 return asyncio.run(cmd_check(load_settings(paths.config), paths, store, force=args.force))
             case "status":
@@ -441,7 +481,7 @@ def main(argv: list[str] | None = None) -> int:
             case "resume":
                 return cmd_resume(paths)
             case "view":
-                return cmd_view(load_settings(paths.config), paths)
+                return cmd_view(load_settings(paths.config), paths, store)
             case "poll":
                 return cmd_poll(paths)
             case "run":
