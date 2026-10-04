@@ -2,7 +2,7 @@
 	import { onMount } from "svelte";
 
 	import CheckNow from "./CheckNow.svelte";
-	import DayList from "./DayList.svelte";
+	import DayPicker from "./DayPicker.svelte";
 	import { checkNow, getDay, getDays, getMap, getStatus } from "./lib/api";
 	import type { Day, DayData, MapTiles, Status } from "./lib/types";
 	import MapView from "./MapView.svelte";
@@ -27,7 +27,7 @@
 
 	async function loadDays() {
 		days = await getDays();
-		// Keep the selected day if it's still listed; otherwise show the newest.
+		// Keep the selected day if it's still recorded; otherwise show the newest.
 		const keep = days.find((d) => d.date === selected)?.date ?? days[0]?.date;
 		if (keep) await select(keep);
 	}
@@ -61,9 +61,9 @@
 </script>
 
 <nav>
-	<h1>air-notify</h1>
+	<h1>AirNotify</h1>
+	<DayPicker {days} {selected} onselect={(date) => select(date).catch(showError)} />
 	<CheckNow {status} {message} {checking} oncheck={check} />
-	<DayList {days} {selected} onselect={(date) => select(date).catch(showError)} />
 </nav>
 <main>
 	<MapView {tiles} points={day?.points ?? []} zones={day?.zones ?? []} />
@@ -71,14 +71,15 @@
 
 <style>
 	nav {
-		width: 13rem;
+		width: 21rem; /* fits the inline calendar */
 		overflow-y: auto;
 		border-right: 1px solid #ddd;
 	}
 
 	h1 {
-		font-size: 1rem;
+		font-size: 3rem;
 		margin: 0.75rem;
+		font-weight: 900;
 	}
 
 	main {

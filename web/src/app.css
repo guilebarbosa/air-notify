@@ -1,17 +1,45 @@
+@import "tailwindcss";
+
+/* Tailwind only generates the classes it finds in our code and in the Flowbite components we
+   use: scan just those folders (the date picker and the buttons and spinner it's built from),
+   not the whole library. Add a folder here when using another Flowbite component. */
+@source "../node_modules/flowbite-svelte/dist/datepicker";
+@source "../node_modules/flowbite-svelte/dist/buttons";
+@source "../node_modules/flowbite-svelte/dist/toolbar";
+@source "../node_modules/flowbite-svelte/dist/spinner";
+
+/* Dark styles only with a .dark class (never set), so Flowbite parts don't turn dark on
+   their own when the OS is in dark mode while the rest of the page stays light. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Flowbite's accent colour ("primary"), mapped to Tailwind's blue. */
+@theme {
+	--color-primary-50: var(--color-blue-50);
+	--color-primary-100: var(--color-blue-100);
+	--color-primary-200: var(--color-blue-200);
+	--color-primary-300: var(--color-blue-300);
+	--color-primary-400: var(--color-blue-400);
+	--color-primary-500: var(--color-blue-500);
+	--color-primary-600: var(--color-blue-600);
+	--color-primary-700: var(--color-blue-700);
+	--color-primary-800: var(--color-blue-800);
+	--color-primary-900: var(--color-blue-900);
+}
+
 html,
 body,
 #app {
-  margin: 0;
-  height: 100%;
-  font: 14px system-ui, sans-serif;
+	margin: 0;
+	height: 100%;
+	font: 14px system-ui, sans-serif;
 }
 
 #app {
-  display: flex;
+	display: flex;
 }
 
 @media (max-width: 40rem) {
-  #app {
-    flex-direction: column;
-  }
+	#app {
+		flex-direction: column;
+	}
 }

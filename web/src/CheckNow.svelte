@@ -1,4 +1,6 @@
 <script lang="ts">
+	import Button from "flowbite-svelte/Button.svelte"; // same per-component import as the date picker
+
 	import { clock } from "./lib/format";
 	import type { Status } from "./lib/types";
 
@@ -22,16 +24,15 @@
 </script>
 
 {#if status?.available}
-	<button onclick={oncheck} disabled={checking}>{checking ? "Checking…" : "Check now"}</button>
+	<div class="check">
+		<Button size="sm" onclick={oncheck} disabled={checking}>{checking ? "Checking…" : "Check now"}</Button>
+	</div>
 {/if}
 <p>{message ?? summary}</p>
 
 <style>
-	button {
+	.check {
 		margin: 0 0.75rem;
-		padding: 0.4rem 0.7rem;
-		font: inherit;
-		cursor: pointer;
 	}
 
 	p {
