@@ -20,6 +20,7 @@ from aiohttp import web
 from .config import Settings
 from .history import History
 from .maps import DEFAULT_STYLE, STYLES
+from .timeline import day_events
 from .state import ManualCheck
 
 logger = logging.getLogger(__name__)
@@ -119,7 +120,14 @@ def create_app(
             which = date.fromisoformat(request.match_info["day"])
         except ValueError:
             raise web.HTTPBadRequest(text="Expected a date like 2026-09-30") from None
-        return web.json_response({"date": which.isoformat(), "points": history.points(which), "zones": zones})
+        return web.json_response(
+            {
+                "date": which.isoformat(),
+                "points": history.points(which),
+                "zones": zones,
+                "events": day_events(history, which, settings),
+            }
+        )
 
     async def map_tiles(_: web.Request) -> web.Response:
         # The key necessarily reaches the browser (it's part of every tile URL); never log it.

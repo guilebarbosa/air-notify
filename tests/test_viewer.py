@@ -44,6 +44,7 @@ async def test_days_and_day_points(client):
     data = await (await client.get(f"/api/days/{days[0]['date']}")).json()
     assert [p["acc"] for p in data["points"]] == [20, 40]
     assert [z["name"] for z in data["zones"]] == ["School", "Home"]
+    assert data["events"] == []  # both points are at school: nothing arrives or leaves
 
 
 async def test_bad_date_is_rejected(client):
