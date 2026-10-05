@@ -1,11 +1,20 @@
+<script lang="ts" module>
+	/** Space (in pixels) to keep clear of overlays when zooming to the day's points. */
+	export interface Padding {
+		topLeft: [number, number];
+		bottomRight: [number, number];
+	}
+</script>
+
 <script lang="ts">
-	// The map. Three effects below, each re-run by Svelte when what it reads changes:
+	// The map, filling the window. Three effects below, each re-run by Svelte when what it reads changes:
 	//   1. create the Leaflet map once,
 	//   2. put the base map (tiles) underneath,
 	//   3. draw the day's zones, path and points on top, redrawn whenever they change.
 	import L from "leaflet";
 	import "leaflet/dist/leaflet.css";
 
+	import { pointColor, zoneColor } from "./lib/colors";
 	import { clock } from "./lib/format";
 	import type { MapTiles, Point, Zone } from "./lib/types";
 
@@ -13,9 +22,10 @@
 		tiles: MapTiles | null; // from /api/map; nothing is drawn underneath until it arrives
 		points: Point[]; // the selected day's reports, oldest first
 		zones: Zone[];
+		padding: Padding; // the floating panel (desktop) or footer (mobile) covers part of the map
 	}
 
-	let { tiles, points, zones }: Props = $props();
+	let { tiles, points, zones, padding }: Props = $props();
 
 	let container: HTMLDivElement; // the <div> below; Leaflet draws into it
 	// $state.raw: effects re-run when these are assigned, but Svelte doesn't wrap the
@@ -30,9 +40,12 @@
 		return span;
 	}
 
-	// 1. Create the map once, zoomed out on the whole world until a day is shown.
+	// 1. Create the map once, zoomed out on the whole world until a day is shown. The zoom buttons
+	//    and attribution go top right, away from the panel (left) and the mobile footer (bottom).
 	$effect(() => {
-		const m = L.map(container).setView([20, 0], 2);
+		const m = L.map(container, { zoomControl: false, attributionControl: false }).setView([20, 0], 2);
+		L.control.zoom({ position: "topright" }).addTo(m);
+		L.control.attribution({ position: "topright" }).addTo(m);
 		map = m;
 		layer = L.layerGroup().addTo(m);
 		return () => m.remove(); // cleanup when the component goes away
@@ -59,16 +72,23 @@
 		if (!map || !layer) return;
 		layer.clearLayers();
 
-		// Zones: the real geofence area (radius_m), outlined in green; hover for the name.
-		for (const z of zones) {
-			L.circle([z.lat, z.lon], { radius: z.radius_m, color: "#7d2e32", weight: 1, fillOpacity: 0.2 })
+		// Zones: the real geofence area (radius_m), each in its own colour (the same as its
+		// dots in the timeline); hover for the name.
+		zones.forEach((z, i) => {
+			const color = zoneColor(i).hex;
+			L.circle([z.lat, z.lon], { radius: z.radius_m, color, weight: 1, fillOpacity: 0.2 })
 				.bindTooltip(text(z.name))
-				.addTo(layer);
-		}
+				.addTo(layer!);
+		});
 
 		// The path: a line through the points in time order.
 		const path = points.map((p): L.LatLngTuple => [p.lat, p.lon]);
-		if (path.length > 1) L.polyline(path, { color: "#1565c0", weight: 2, opacity: 0.6 }).addTo(layer);
+		if (path.length > 1) L.polyline(path, { color: "#1e40af", weight: 2, opacity: 0.4 }).addTo(layer);
+
+		// Colour by time: the day's first report is light blue, its last dark blue, and the rest
+		// in between by when they happened, so older and newer points are easy to tell apart.
+		const first = points.length ? Date.parse(points[0].t) : 0;
+		const span = points.length ? Date.parse(points[points.length - 1].t) - first : 0;
 
 		points.forEach((p, i) => {
 			const isLast = i === points.length - 1;
@@ -79,25 +99,28 @@
 
 			if (isNearPrevious) return;
 
+			const color = pointColor(span > 0 ? (Date.parse(p.t) - first) / span : 1);
 			// Accuracy: the area the report could really be anywhere in (±acc metres). Each is
 			// only 8% opaque, so where many reports pile up (hours at home or at school) they add
-			// up to a darker blue patch, which is what looks like a heatmap.
+			// up to a darker patch, which is what looks like a heatmap.
 			// (`layer!`: TypeScript can't tell `layer` is still set inside this callback.)
-			L.circle([p.lat, p.lon], { radius: p.acc, stroke: false, fillOpacity: 0.08 }).addTo(layer!);
-			// The dot itself: blue, except the day's latest report, which is bigger and red.
+			L.circle([p.lat, p.lon], { radius: p.acc, stroke: false, fillColor: color, fillOpacity: 0.08 }).addTo(layer!);
+			// The dot itself, in its time colour; the day's latest report is a bit bigger.
 			L.circleMarker([p.lat, p.lon], {
 				radius: isLast ? 7 : 5,
 				weight: 1,
 				color: "#fff",
-				fillColor: isLast ? "#c62828" : "#1565c0",
+				fillColor: color,
 				fillOpacity: 1,
 			})
 				.bindPopup(text(`${clock(p.t)} · ±${p.acc} m`))
 				.addTo(layer!);
 		});
 
-		// Zoom to fit the day's points, but not closer than street level (17).
-		if (path.length) map.fitBounds(path, { padding: [30, 30], maxZoom: 17 });
+		// Zoom to fit the day's points, clear of the panel/footer, but not closer than street level (17).
+		if (path.length) {
+			map.fitBounds(path, { paddingTopLeft: padding.topLeft, paddingBottomRight: padding.bottomRight, maxZoom: 17 });
+		}
 	});
 </script>
 
@@ -105,6 +128,7 @@
 
 <style>
 	div {
-		height: 100%; /* Leaflet needs a sized container; App's <main> gives it the full height */
+		position: absolute;
+		inset: 0; /* the whole window; the panel and footer float on top */
 	}
 </style>

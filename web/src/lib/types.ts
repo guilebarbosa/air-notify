@@ -19,10 +19,19 @@ export interface Zone {
 	radius_m: number;
 }
 
+/** An arrival or departure, computed on the server with the same rules and wording as the alerts. */
+export interface TimelineEvent {
+	t: string; // ISO 8601 with offset
+	zone: string;
+	transition: "arrive" | "leave";
+	label: string; // e.g. "Saiu da Kita"
+}
+
 export interface DayData {
 	date: string;
 	points: Point[];
 	zones: Zone[];
+	events: TimelineEvent[]; // newest first
 }
 
 /** `available` is false when the viewer runs on its own (`air-notify view`), without the daemon. */
