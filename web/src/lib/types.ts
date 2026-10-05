@@ -24,7 +24,7 @@ export interface TimelineEvent {
 	t: string; // ISO 8601 with offset
 	zone: string;
 	transition: "arrive" | "leave";
-	label: string; // e.g. "Saiu da Kita"
+	label: string; // e.g. "Left school"
 }
 
 export interface DayData {
