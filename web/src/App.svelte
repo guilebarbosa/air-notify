@@ -91,7 +91,7 @@
 
 {#snippet details()}
 	<StatusLine {status} {message} />
-	<DayTimeline events={day?.events ?? []} zones={day?.zones ?? []} />
+	<DayTimeline events={day?.events ?? []} />
 {/snippet}
 
 <MapView {tiles} points={day?.points ?? []} zones={day?.zones ?? []} {padding} />

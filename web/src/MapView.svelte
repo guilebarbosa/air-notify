@@ -72,10 +72,9 @@
 		if (!map || !layer) return;
 		layer.clearLayers();
 
-		// Zones: the real geofence area (radius_m), each in its own colour (the same as its
-		// dots in the timeline); hover for the name.
+		// Zones: the real geofence area (radius_m), each in its own colour; hover for the name.
 		zones.forEach((z, i) => {
-			const color = zoneColor(i).hex;
+			const color = zoneColor(i);
 			L.circle([z.lat, z.lon], { radius: z.radius_m, color, weight: 1, fillOpacity: 0.2 })
 				.bindTooltip(text(z.name))
 				.addTo(layer!);

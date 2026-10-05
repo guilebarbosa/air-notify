@@ -1,20 +1,16 @@
 <script lang="ts">
-	// The selected day's arrivals and departures, newest first; each dot has its zone's colour.
+	// The selected day's arrivals and departures, newest first: green dot = arrived, red = left.
 	import Timeline from "flowbite-svelte/Timeline.svelte";
 	import TimelineItem from "flowbite-svelte/TimelineItem.svelte";
 
-	import { zoneColor } from "./lib/colors";
 	import { clock } from "./lib/format";
-	import type { TimelineEvent, Zone } from "./lib/types";
+	import type { TimelineEvent } from "./lib/types";
 
 	interface Props {
 		events: TimelineEvent[];
-		zones: Zone[];
 	}
 
-	let { events, zones }: Props = $props();
-
-	const colorOf = (zone: string) => zoneColor(zones.findIndex((z) => z.name === zone)).name;
+	let { events }: Props = $props();
 </script>
 
 {#if events.length === 0}
@@ -26,7 +22,7 @@
 			<TimelineItem
 				title={event.label}
 				date={clock(event.t)}
-				color={colorOf(event.zone)}
+				color={event.transition === "arrive" ? "green" : "red"}
 				isLast={i === events.length - 1}
 			>
 				<span class="sr-only">{event.transition === "arrive" ? "Arrived" : "Left"}</span>

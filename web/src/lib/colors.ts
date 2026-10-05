@@ -1,17 +1,15 @@
-// Zones: Flowbite's timeline colour names, with the matching hex for the map circles.
-// Blue is left out: it's used for the points.
+// Zones: one colour per zone for the map circles. Avoids blue (the points) and green/red
+// (arrived/left in the timeline), so a zone's colour never reads as one of those.
 export const ZONE_COLORS = [
-	{ name: "green", hex: "#16a34a" },
-	{ name: "orange", hex: "#ea580c" },
-	{ name: "purple", hex: "#9333ea" },
-	{ name: "red", hex: "#dc2626" },
-	{ name: "gray", hex: "#4b5563" },
+	"#9333ea", // purple
+	"#ea580c", // orange
+	"#0d9488", // teal
+	"#db2777", // pink
+	"#4b5563", // grey
 ] as const;
 
-export type ZoneColor = (typeof ZONE_COLORS)[number];
-
 /** Zones keep their config order, so a zone always gets the same colour. */
-export const zoneColor = (index: number): ZoneColor => ZONE_COLORS[Math.max(0, index) % ZONE_COLORS.length];
+export const zoneColor = (index: number): string => ZONE_COLORS[Math.max(0, index) % ZONE_COLORS.length];
 
 // Points: from light blue (the day's oldest report) to dark blue (its newest).
 const OLDEST = [191, 219, 254]; // Tailwind blue-200
