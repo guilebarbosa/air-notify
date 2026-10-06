@@ -94,7 +94,7 @@
 	<DayTimeline events={day?.events ?? []} />
 {/snippet}
 
-<MapView {tiles} points={day?.points ?? []} zones={day?.zones ?? []} {padding} />
+<MapView {tiles} points={day?.points ?? []} zones={day?.zones ?? []} maxAccuracy={day?.max_accuracy_m ?? Infinity} {padding} />
 
 <!-- No overflow on the panel itself (only the timeline part scrolls), so the calendar popover isn't clipped. -->
 <aside

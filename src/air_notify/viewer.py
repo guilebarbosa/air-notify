@@ -126,6 +126,8 @@ def create_app(
                 "points": history.points(which),
                 "zones": zones,
                 "events": day_events(history, which, settings),
+                # The map hides reports less accurate than this, like the alerts do.
+                "max_accuracy_m": settings.max_accuracy_m,
             }
         )
 

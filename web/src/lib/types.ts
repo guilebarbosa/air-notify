@@ -32,6 +32,7 @@ export interface DayData {
 	points: Point[];
 	zones: Zone[];
 	events: TimelineEvent[]; // newest first
+	max_accuracy_m: number; // reports less accurate than this aren't drawn (same rule as the alerts)
 }
 
 /** `available` is false when the viewer runs on its own (`air-notify view`), without the daemon. */

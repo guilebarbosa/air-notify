@@ -22,10 +22,32 @@
 		tiles: MapTiles | null; // from /api/map; nothing is drawn underneath until it arrives
 		points: Point[]; // the selected day's reports, oldest first
 		zones: Zone[];
+		maxAccuracy: number; // metres; less accurate reports aren't drawn (the alerts ignore them too)
 		padding: Padding; // the floating panel (desktop) or footer (mobile) covers part of the map
 	}
 
-	let { tiles, points, zones, padding }: Props = $props();
+	let { tiles, points, zones, maxAccuracy, padding }: Props = $props();
+
+	const MIN_DISTANCE_M = 100; // a report this close to the last dot drawn doesn't get its own dot
+
+	/**
+	 * The reports worth a dot: accurate enough, and thinned out so a long stay doesn't pile up
+	 * dozens of dots. A report within MIN_DISTANCE_M of the last dot is skipped, except the
+	 * newest, which replaces that dot, so the map always shows where he was last seen.
+	 */
+	function dotsFor(reports: Point[]): Point[] {
+		// Less accurate reports can be hundreds of metres off (often a passing phone's own position
+		// on the next street) and made the path zigzag.
+		const accurate = reports.filter((p) => p.acc <= maxAccuracy);
+		const dots: Point[] = [];
+		accurate.forEach((p, i) => {
+			const last = dots[dots.length - 1];
+			const near = last !== undefined && L.latLng(p.lat, p.lon).distanceTo([last.lat, last.lon]) < MIN_DISTANCE_M;
+			if (!near) dots.push(p);
+			else if (i === accurate.length - 1) dots[dots.length - 1] = p; // the newest replaces the nearby dot
+		});
+		return dots;
+	}
 
 	let container: HTMLDivElement; // the <div> below; Leaflet draws into it
 	// $state.raw: effects re-run when these are assigned, but Svelte doesn't wrap the
@@ -80,31 +102,22 @@
 				.addTo(layer!);
 		});
 
-		// The path: a line through the points in time order.
-		const path = points.map((p): L.LatLngTuple => [p.lat, p.lon]);
+		const dots = dotsFor(points);
+
+		// The path: a line through the dots in time order.
+		const path = dots.map((p): L.LatLngTuple => [p.lat, p.lon]);
 		if (path.length > 1) L.polyline(path, { color: "#1e40af", weight: 2, opacity: 0.4 }).addTo(layer);
 
-		// Colour by time: the day's first report is light blue, its last dark blue, and the rest
-		// in between by when they happened, so older and newer points are easy to tell apart.
-		const first = points.length ? Date.parse(points[0].t) : 0;
-		const span = points.length ? Date.parse(points[points.length - 1].t) - first : 0;
-
-		points.forEach((p, i) => {
-			const isLast = i === points.length - 1;
-			const previous = i > 0 ? points[i - 1] : null;
-			// only display points that are not too close to the previous one
-			const minDistance = 100;
-			const isNearPrevious = previous ? L.latLng(p.lat, p.lon).distanceTo([previous.lat, previous.lon]) < minDistance : false;
-
-			if (isNearPrevious) return;
-
-			const color = pointColor(span > 0 ? (Date.parse(p.t) - first) / span : 1);
+		// Colour by order: the first dot is light blue, the last dark blue, and each one in between
+		// a step darker, so older and newer dots are easy to tell apart.
+		dots.forEach((p, i) => {
+			const isLast = i === dots.length - 1;
+			const color = pointColor(dots.length > 1 ? i / (dots.length - 1) : 1);
 			// Accuracy: the area the report could really be anywhere in (±acc metres). Each is
-			// only 8% opaque, so where many reports pile up (hours at home or at school) they add
-			// up to a darker patch, which is what looks like a heatmap.
+			// only 8% opaque, so where several overlap they add up to a darker patch.
 			// (`layer!`: TypeScript can't tell `layer` is still set inside this callback.)
 			L.circle([p.lat, p.lon], { radius: p.acc, stroke: false, fillColor: color, fillOpacity: 0.08 }).addTo(layer!);
-			// The dot itself, in its time colour; the day's latest report is a bit bigger.
+			// The dot itself, in its colour; the latest one is a bit bigger.
 			L.circleMarker([p.lat, p.lon], {
 				radius: isLast ? 7 : 5,
 				weight: 1,
@@ -116,7 +129,7 @@
 				.addTo(layer!);
 		});
 
-		// Zoom to fit the day's points, clear of the panel/footer, but not closer than street level (17).
+		// Zoom to fit the day's dots, clear of the panel/footer, but not closer than street level (17).
 		if (path.length) {
 			map.fitBounds(path, { paddingTopLeft: padding.topLeft, paddingBottomRight: padding.bottomRight, maxZoom: 17 });
 		}
