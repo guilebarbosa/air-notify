@@ -29,6 +29,7 @@
 	let { tiles, points, zones, maxAccuracy, padding }: Props = $props();
 
 	const MIN_DISTANCE_M = 100; // a report this close to the last dot drawn doesn't get its own dot
+	const LATEST_COLOR = "#dc2626"; // red: the latest dot
 
 	/**
 	 * The reports worth a dot: accurate enough, and thinned out so a long stay doesn't pile up
@@ -117,16 +118,18 @@
 			// only 8% opaque, so where several overlap they add up to a darker patch.
 			// (`layer!`: TypeScript can't tell `layer` is still set inside this callback.)
 			L.circle([p.lat, p.lon], { radius: p.acc, stroke: false, fillColor: color, fillOpacity: 0.08 }).addTo(layer!);
-			// The dot itself, in its colour; the latest one is a bit bigger.
-			L.circleMarker([p.lat, p.lon], {
-				radius: isLast ? 7 : 5,
-				weight: 1,
+			// The dot itself, in its colour. The latest is red and a bit bigger, so where he was
+			// last seen stands out.
+			const dot = L.circleMarker([p.lat, p.lon], {
+				radius: isLast ? 8 : 5,
+				weight: isLast ? 2 : 1,
 				color: "#fff",
-				fillColor: color,
+				fillColor: isLast ? LATEST_COLOR : color,
 				fillOpacity: 1,
 			})
 				.bindPopup(text(`${clock(p.t)} · ±${p.acc} m`))
 				.addTo(layer!);
+			if (isLast) dot.bringToFront(); // never hidden under an older dot
 		});
 
 		// Zoom to fit the day's dots, clear of the panel/footer, but not closer than street level (17).
