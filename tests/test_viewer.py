@@ -31,6 +31,10 @@ async def test_page_and_assets_with_a_strict_csp(client):
     assert "unpkg" not in csp  # Leaflet is bundled now
     assert response.headers["Cache-Control"] == "no-store"
 
+    assert "font-src 'self'" in csp  # the bundled wordmark font
+    assert (await client.get("/icons/icon-production.svg")).status == 200
+    assert "/icons/icon-production.svg" in page  # the built app uses the red (production) icon
+
     script = next((STATIC / "assets").glob("*.js")).name
     asset = await client.get(f"/assets/{script}")
     assert asset.status == 200

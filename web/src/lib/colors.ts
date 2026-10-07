@@ -2,7 +2,7 @@
 // (arrived/left in the timeline), so a zone's colour never reads as one of those.
 export const ZONE_COLORS = [
 	"#9333ea", // purple
-	"#ea580c", // orange
+	"#ff9c4c", // tangerine (brand orange)
 	"#0d9488", // teal
 	"#db2777", // pink
 	"#4b5563", // grey

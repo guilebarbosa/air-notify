@@ -9,6 +9,7 @@
 	import { checkNow, getDay, getDays, getMap, getStatus } from "./lib/api";
 	import { todayIso } from "./lib/format";
 	import type { Day, DayData, MapTiles, Status } from "./lib/types";
+	import Logo from "./Logo.svelte";
 	import MapView, { type Padding } from "./MapView.svelte";
 	import MobileFooter from "./MobileFooter.svelte";
 	import StatusLine from "./StatusLine.svelte";
@@ -100,7 +101,7 @@
 <aside
 	class="absolute top-4 left-4 z-[1100] hidden max-h-[calc(100%-2rem)] w-[22rem] flex-col gap-4 rounded-2xl bg-white/95 p-5 shadow-xl md:flex"
 >
-	<h1 class="text-5xl font-black">AirNotify</h1>
+	<h1><Logo class="h-12 w-auto" /></h1>
 	{@render controls("day-desktop", "bottom")}
 	<div class="flex min-h-0 flex-col gap-3 overflow-y-auto">
 		{@render details()}

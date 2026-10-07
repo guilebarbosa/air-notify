@@ -29,7 +29,7 @@
 	let { tiles, points, zones, maxAccuracy, padding }: Props = $props();
 
 	const MIN_DISTANCE_M = 100; // a report this close to the last dot drawn doesn't get its own dot
-	const LATEST_COLOR = "#dc2626"; // red: the latest dot
+	const LATEST_COLOR = "#b93636"; // brick (brand red): the latest dot
 
 	/**
 	 * The reports worth a dot: accurate enough, and thinned out so a long stay doesn't pile up

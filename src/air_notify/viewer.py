@@ -40,6 +40,7 @@ def content_security_policy(*tile_hosts: str) -> str:
             "script-src 'self'",
             "style-src 'self' 'unsafe-inline'",  # Leaflet positions elements with inline styles
             f"img-src 'self' data: {' '.join(sorted(set(tile_hosts)))}",
+            "font-src 'self'",  # the bundled Lexend (wordmark)
             "connect-src 'self'",
             "base-uri 'none'",
             "form-action 'none'",
@@ -168,6 +169,8 @@ def create_app(
     app.router.add_get("/", index)
     if (STATIC / "assets").is_dir():
         app.router.add_static("/assets", STATIC / "assets")
+    if (STATIC / "icons").is_dir():
+        app.router.add_static("/icons", STATIC / "icons")
     app.router.add_get("/api/days", days)
     app.router.add_get("/api/days/{day}", day)
     app.router.add_get("/api/map", map_tiles)

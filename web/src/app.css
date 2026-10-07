@@ -15,18 +15,121 @@
    their own when the OS is in dark mode while the rest of the page stays light. */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Flowbite's accent colour ("primary"), mapped to Tailwind's blue. */
+/* Brand palette: 11 shades around each brand colour (OKLCH, same hue throughout).
+   The brand colour itself is one of the shades: sage-500, brick-600, tangerine-300, butter-100. */
 @theme {
-	--color-primary-50: var(--color-blue-50);
-	--color-primary-100: var(--color-blue-100);
-	--color-primary-200: var(--color-blue-200);
-	--color-primary-300: var(--color-blue-300);
-	--color-primary-400: var(--color-blue-400);
-	--color-primary-500: var(--color-blue-500);
-	--color-primary-600: var(--color-blue-600);
-	--color-primary-700: var(--color-blue-700);
-	--color-primary-800: var(--color-blue-800);
-	--color-primary-900: var(--color-blue-900);
+	--color-sage-50: #f4f8f1;
+	--color-sage-100: #e8f0e2;
+	--color-sage-200: #d0dec7;
+	--color-sage-300: #b4c9a6;
+	--color-sage-400: #95b082;
+	--color-sage-500: #7d9c65;  /* brand */
+	--color-sage-600: #647e4f;
+	--color-sage-700: #4f663e;
+	--color-sage-800: #3e512f;
+	--color-sage-900: #304023;
+	--color-sage-950: #1f2b15;
+
+	--color-brick-50: #fff4f3;
+	--color-brick-100: #ffe6e4;
+	--color-brick-200: #fbccc7;
+	--color-brick-300: #f1ada7;
+	--color-brick-400: #e38a83;
+	--color-brick-500: #d26761;
+	--color-brick-600: #b93636;  /* brand */
+	--color-brick-700: #a32c2d;
+	--color-brick-800: #851f21;
+	--color-brick-900: #6c1517;
+	--color-brick-950: #4c080b;
+
+	--color-tangerine-50: #fff5ee;
+	--color-tangerine-100: #ffe8d8;
+	--color-tangerine-200: #feceac;
+	--color-tangerine-300: #ff9c4c;  /* brand */
+	--color-tangerine-400: #e88c42;
+	--color-tangerine-500: #c67533;
+	--color-tangerine-600: #a66026;
+	--color-tangerine-700: #884c19;
+	--color-tangerine-800: #6e3c0f;
+	--color-tangerine-900: #592e06;
+	--color-tangerine-950: #3d1d01;
+
+	--color-butter-50: #fff9ce;
+	--color-butter-100: #fff2a0;  /* brand */
+	--color-butter-200: #e7db8f;
+	--color-butter-300: #cec37d;
+	--color-butter-400: #b2a86a;
+	--color-butter-500: #968e57;
+	--color-butter-600: #7d7646;
+	--color-butter-700: #655f36;
+	--color-butter-800: #514b29;
+	--color-butter-900: #403b1e;
+	--color-butter-950: #2b2710;
+}
+
+/* The brand palette takes over everywhere: Flowbite's accent ("primary") is sage, and the
+   stock green/red/orange/yellow that Flowbite components use become sage/brick/tangerine/butter
+   (e.g. the timeline's arrived/left dots). Blue stays stock: it's the map's report dots. */
+@theme {
+	--color-primary-50: var(--color-sage-50);
+	--color-primary-100: var(--color-sage-100);
+	--color-primary-200: var(--color-sage-200);
+	--color-primary-300: var(--color-sage-300);
+	--color-primary-400: var(--color-sage-400);
+	--color-primary-500: var(--color-sage-500);
+	--color-primary-600: var(--color-sage-600);
+	--color-primary-700: var(--color-sage-700);
+	--color-primary-800: var(--color-sage-800);
+	--color-primary-900: var(--color-sage-900);
+	--color-primary-950: var(--color-sage-950);
+
+	--color-green-50: var(--color-sage-50);
+	--color-green-100: var(--color-sage-100);
+	--color-green-200: var(--color-sage-200);
+	--color-green-300: var(--color-sage-300);
+	--color-green-400: var(--color-sage-400);
+	--color-green-500: var(--color-sage-500);
+	--color-green-600: var(--color-sage-600);
+	--color-green-700: var(--color-sage-700);
+	--color-green-800: var(--color-sage-800);
+	--color-green-900: var(--color-sage-900);
+	--color-green-950: var(--color-sage-950);
+
+	--color-red-50: var(--color-brick-50);
+	--color-red-100: var(--color-brick-100);
+	--color-red-200: var(--color-brick-200);
+	--color-red-300: var(--color-brick-300);
+	--color-red-400: var(--color-brick-400);
+	--color-red-500: var(--color-brick-500);
+	--color-red-600: var(--color-brick-600);
+	--color-red-700: var(--color-brick-700);
+	--color-red-800: var(--color-brick-800);
+	--color-red-900: var(--color-brick-900);
+	--color-red-950: var(--color-brick-950);
+
+	--color-orange-50: var(--color-tangerine-50);
+	--color-orange-100: var(--color-tangerine-100);
+	--color-orange-200: var(--color-tangerine-200);
+	--color-orange-300: var(--color-tangerine-300);
+	--color-orange-400: var(--color-tangerine-400);
+	--color-orange-500: var(--color-tangerine-500);
+	--color-orange-600: var(--color-tangerine-600);
+	--color-orange-700: var(--color-tangerine-700);
+	--color-orange-800: var(--color-tangerine-800);
+	--color-orange-900: var(--color-tangerine-900);
+	--color-orange-950: var(--color-tangerine-950);
+
+	--color-yellow-50: var(--color-butter-50);
+	--color-yellow-100: var(--color-butter-100);
+	--color-yellow-200: var(--color-butter-200);
+	--color-yellow-300: var(--color-butter-300);
+	--color-yellow-400: var(--color-butter-400);
+	--color-yellow-500: var(--color-butter-500);
+	--color-yellow-600: var(--color-butter-600);
+	--color-yellow-700: var(--color-butter-700);
+	--color-yellow-800: var(--color-butter-800);
+	--color-yellow-900: var(--color-butter-900);
+	--color-yellow-950: var(--color-butter-950);
 }
 
 /* The map fills the window; the desktop panel and the mobile footer float on top of it. */
