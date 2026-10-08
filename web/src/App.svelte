@@ -112,7 +112,7 @@
 
 <!-- No overflow on the panel itself (only the timeline part scrolls), so the calendar popover isn't clipped. -->
 <aside
-	class="absolute top-4 left-4 z-[1100] hidden max-h-[calc(100%-2rem)] w-[22rem] flex-col gap-4 rounded-2xl bg-white/95 p-5 shadow-xl md:flex"
+	class="absolute top-[max(1rem,env(safe-area-inset-top))] left-[max(1rem,env(safe-area-inset-left))] z-[1100] hidden max-h-[calc(100%-2rem)] w-[22rem] flex-col gap-4 rounded-2xl bg-white/95 p-5 shadow-xl md:flex"
 >
 	<h1><Logo class="h-12 w-auto" /></h1>
 	{@render controls("day-desktop", "bottom")}

@@ -8,10 +8,11 @@
 
 <script lang="ts">
 	// The map, filling the window. Three effects below, each re-run by Svelte when what it reads changes:
-	//   1. create the Leaflet map once, with its buttons,
+	//   1. create the Leaflet map once,
 	//   2. put the base map (tiles) underneath,
 	//   3. draw the day's zones, path and points on top, redrawn whenever they change, and
-	//      zoom in on the latest point ("Whole day" zooms out to all of them).
+	//      zoom in on the latest point.
+	// The map buttons (zoom, "Last location", "Whole day") are our own, in the app's style.
 	import L from "leaflet";
 	import "leaflet/dist/leaflet.css";
 
@@ -35,9 +36,18 @@
 	const LATEST_COLOR = "#b93636"; // brick (brand red): the latest dot
 	const LATEST_ZOOM = 16; // a few streets around the latest dot
 	const DAY_MAX_ZOOM = 17; // "Whole day": never closer than street level, even for a day spent in one place
-	// The "Whole day" button's icon: four corners of a frame.
-	const FRAME_ICON =
-		'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>';
+
+	// The map buttons look like the date buttons (Flowbite's "alternative" style): white with a
+	// light border, the brand green on hover. Stacked in groups, with a line between buttons.
+	const GROUP = "flex flex-col divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xs";
+	const BUTTON =
+		"flex size-10 items-center justify-center text-gray-900 enabled:hover:bg-gray-100 enabled:hover:text-primary-700 " +
+		"disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary-500";
+	// Icons (24×24, stroked like the date arrows).
+	const PLUS = "M12 5v14M5 12h14";
+	const MINUS = "M5 12h14";
+	const PIN = "M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Zm0-8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z";
+	const FRAME = "M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"; // four corners: the whole day
 
 	/**
 	 * The reports worth a dot: accurate enough, and thinned out so a long stay doesn't pile up
@@ -88,7 +98,8 @@
 	// Leaflet objects in its reactive proxies (Leaflet needs the real objects).
 	let map = $state.raw<L.Map>();
 	let layer = $state.raw<L.LayerGroup>(); // everything we draw on top of the base map
-	let path: L.LatLngTuple[] = []; // the day's dots in time order, for "Whole day"
+	let path = $state.raw<L.LatLngTuple[]>([]); // the day's dots in time order, for the buttons
+	let zoom = $state({ level: 2, min: 0, max: Infinity }); // to grey out + / − at the limits
 
 	/** Zoom to fit these points in the part of the map the panel/footer don't cover. */
 	function fit(points: L.LatLngTuple[], maxZoom: number) {
@@ -102,32 +113,15 @@
 		return span;
 	}
 
-	// 1. Create the map once, zoomed out on the whole world until a day is shown. The buttons and
-	//    attribution go bottom right, away from the panel (top left); on mobile they sit just above
-	//    the footer (see buttonsBottom). Leaflet stacks each control added to a bottom corner on top
-	//    of the earlier ones, so they're added bottom-up: attribution, "Whole day", zoom.
+	// 1. Create the map once, zoomed out on the whole world until a day is shown. Only the
+	//    attribution is a Leaflet control, bottom right under our buttons.
 	$effect(() => {
 		const m = L.map(container, { zoomControl: false, attributionControl: false }).setView([20, 0], 2);
 		L.control.attribution({ position: "bottomright" }).addTo(m);
-		// "Whole day", under the zoom buttons and styled like them.
-		const wholeDay = new L.Control({ position: "bottomright" });
-		wholeDay.onAdd = () => {
-			const bar = L.DomUtil.create("div", "leaflet-bar whole-day");
-			const button = L.DomUtil.create("a", "", bar);
-			button.href = "#";
-			button.title = "Whole day";
-			button.setAttribute("role", "button");
-			button.setAttribute("aria-label", "Show the whole day");
-			button.innerHTML = FRAME_ICON;
-			L.DomEvent.disableClickPropagation(bar);
-			L.DomEvent.on(button, "click", (event) => {
-				L.DomEvent.preventDefault(event);
-				if (path.length) fit(path, DAY_MAX_ZOOM);
-			});
-			return bar;
-		};
-		wholeDay.addTo(m);
-		L.control.zoom({ position: "bottomright" }).addTo(m);
+		// The zoom limits change when the tiles arrive (they set the deepest zoom).
+		const sync = () => (zoom = { level: m.getZoom(), min: m.getMinZoom(), max: m.getMaxZoom() });
+		m.on("zoomend zoomlevelschange", sync);
+		sync();
 		map = m;
 		layer = L.layerGroup().addTo(m);
 		return () => m.remove(); // cleanup when the component goes away
@@ -168,8 +162,8 @@
 		const dots = dotsFor(points);
 
 		// The path: a line through the dots in time order.
-		path = dots.map((p): L.LatLngTuple => [p.lat, p.lon]);
-		if (path.length > 1) L.polyline(path, { color: "#1e40af", weight: 2, opacity: 0.4 }).addTo(layer);
+		const line = dots.map((p): L.LatLngTuple => [p.lat, p.lon]);
+		if (line.length > 1) L.polyline(line, { color: "#1e40af", weight: 2, opacity: 0.4 }).addTo(layer);
 
 		// Colour by order: the first dot is light blue, the last dark blue, and each one in between
 		// a step darker, so older and newer dots are easy to tell apart.
@@ -205,33 +199,78 @@
 
 		// Today: start on the latest dot, centred in the part of the map the panel/footer don't
 		// cover. A past day: show all of it.
-		if (path.length) {
-			if (focusLatest) fit([path[path.length - 1]], LATEST_ZOOM);
-			else fit(path, DAY_MAX_ZOOM);
+		// (`line`, not `path`: reading `path` here would re-run this effect each time it's set.)
+		path = line;
+		if (line.length) {
+			if (focusLatest) fit([line[line.length - 1]], LATEST_ZOOM);
+			else fit(line, DAY_MAX_ZOOM);
 		}
 	});
+
+	function showLatest() {
+		if (path.length) fit([path[path.length - 1]], LATEST_ZOOM);
+	}
+
+	function showWholeDay() {
+		if (path.length) fit(path, DAY_MAX_ZOOM);
+	}
 </script>
 
-<div bind:this={container} style:--buttons-bottom="{buttonsBottom}px"></div>
+{#snippet icon(d: string)}
+	<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+		<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" {d} />
+	</svg>
+{/snippet}
+
+<div class="map" style:--buttons-bottom="{buttonsBottom}px">
+	<div class="leaflet" bind:this={container}></div>
+
+	<div class="buttons flex flex-col gap-2">
+		<div class={GROUP}>
+			<button type="button" class={BUTTON} title="Zoom in" disabled={zoom.level >= zoom.max} onclick={() => map?.zoomIn()}>
+				{@render icon(PLUS)}
+			</button>
+			<button type="button" class={BUTTON} title="Zoom out" disabled={zoom.level <= zoom.min} onclick={() => map?.zoomOut()}>
+				{@render icon(MINUS)}
+			</button>
+		</div>
+		<div class={GROUP}>
+			<button type="button" class={BUTTON} title="Last location" disabled={!path.length} onclick={showLatest}>
+				{@render icon(PIN)}
+			</button>
+			<button type="button" class={BUTTON} title="Whole day" disabled={!path.length} onclick={showWholeDay}>
+				{@render icon(FRAME)}
+			</button>
+		</div>
+	</div>
+</div>
 
 <style>
-	div {
+	.map,
+	.leaflet {
 		position: absolute;
 		inset: 0; /* the whole window; the panel and footer float on top */
 	}
 
+	/* Bottom right, above the attribution. Clear of the mobile footer (--buttons-bottom) and, with
+	   viewport-fit=cover, of the iPhone's home bar and notch (the safe-area insets). */
+	.buttons {
+		position: absolute;
+		z-index: 1050; /* over Leaflet's layers and controls (up to 1000), under the panel/footer (1100) */
+		right: calc(env(safe-area-inset-right) + 0.75rem);
+		bottom: calc(max(var(--buttons-bottom), env(safe-area-inset-bottom)) + 1.75rem);
+	}
+
 	/* Leaflet creates these elements itself, hence :global. */
-	div :global(.leaflet-bottom) {
-		bottom: var(--buttons-bottom);
+	.leaflet :global(.leaflet-bottom) {
+		bottom: max(var(--buttons-bottom), env(safe-area-inset-bottom));
 	}
 
-	div :global(.whole-day a) {
-		display: flex;
-		align-items: center;
-		justify-content: center;
+	.leaflet :global(.leaflet-right) {
+		right: env(safe-area-inset-right);
 	}
 
-	div :global(.latest-label) {
+	.leaflet :global(.latest-label) {
 		font: 600 13px system-ui;
 	}
 </style>

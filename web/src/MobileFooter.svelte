@@ -18,7 +18,7 @@
 
 <footer
 	bind:clientHeight={height}
-	class="fixed inset-x-0 bottom-0 z-[1100] rounded-t-2xl bg-white px-4 pt-3 pb-4 shadow-[0_-4px_16px_rgba(0,0,0,0.15)] md:hidden"
+	class="fixed inset-x-0 bottom-0 z-[1100] rounded-t-2xl bg-white ps-[max(1rem,env(safe-area-inset-left))] pe-[max(1rem,env(safe-area-inset-right))] pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(0,0,0,0.15)] md:hidden"
 >
 	<div class="mb-3 flex items-center">
 		<Logo class="h-7 w-auto" />
