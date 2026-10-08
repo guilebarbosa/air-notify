@@ -22,6 +22,7 @@
 	let checking = $state(false);
 	let tiles = $state<MapTiles | null>(null);
 	let desktop = $state(true);
+	let footerHeight = $state(0); // the mobile footer's; 0 on desktop
 
 	// Keep the day's points clear of the floating panel (desktop) or the footer (mobile).
 	const padding: Padding = $derived(
@@ -98,7 +99,15 @@
 	<DayTimeline events={day?.events ?? []} />
 {/snippet}
 
-<MapView {tiles} points={day?.points ?? []} zones={day?.zones ?? []} maxAccuracy={day?.max_accuracy_m ?? Infinity} {padding} />
+<MapView
+	{tiles}
+	points={day?.points ?? []}
+	zones={day?.zones ?? []}
+	maxAccuracy={day?.max_accuracy_m ?? Infinity}
+	{padding}
+	focusLatest={day?.date === todayIso()}
+	buttonsBottom={footerHeight}
+/>
 
 <!-- No overflow on the panel itself (only the timeline part scrolls), so the calendar popover isn't clipped. -->
 <aside
@@ -111,7 +120,7 @@
 	</div>
 </aside>
 
-<MobileFooter controls={mobileControls} {details} />
+<MobileFooter controls={mobileControls} {details} bind:height={footerHeight} />
 
 {#snippet mobileControls()}
 	{@render controls("day-mobile", "top")}

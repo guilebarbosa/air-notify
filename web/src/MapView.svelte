@@ -8,9 +8,10 @@
 
 <script lang="ts">
 	// The map, filling the window. Three effects below, each re-run by Svelte when what it reads changes:
-	//   1. create the Leaflet map once,
+	//   1. create the Leaflet map once, with its buttons,
 	//   2. put the base map (tiles) underneath,
-	//   3. draw the day's zones, path and points on top, redrawn whenever they change.
+	//   3. draw the day's zones, path and points on top, redrawn whenever they change, and
+	//      zoom in on the latest point ("Whole day" zooms out to all of them).
 	import L from "leaflet";
 	import "leaflet/dist/leaflet.css";
 
@@ -24,12 +25,19 @@
 		zones: Zone[];
 		maxAccuracy: number; // metres; less accurate reports aren't drawn (the alerts ignore them too)
 		padding: Padding; // the floating panel (desktop) or footer (mobile) covers part of the map
+		focusLatest: boolean; // start zoomed in on the latest dot (today) rather than on the whole day
+		buttonsBottom: number; // pixels the map buttons stay above (the mobile footer; 0 on desktop)
 	}
 
-	let { tiles, points, zones, maxAccuracy, padding }: Props = $props();
+	let { tiles, points, zones, maxAccuracy, padding, focusLatest, buttonsBottom }: Props = $props();
 
 	const MIN_DISTANCE_M = 100; // a report this close to the last dot drawn doesn't get its own dot
 	const LATEST_COLOR = "#b93636"; // brick (brand red): the latest dot
+	const LATEST_ZOOM = 16; // a few streets around the latest dot
+	const DAY_MAX_ZOOM = 17; // "Whole day": never closer than street level, even for a day spent in one place
+	// The "Whole day" button's icon: four corners of a frame.
+	const FRAME_ICON =
+		'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>';
 
 	/**
 	 * The reports worth a dot: accurate enough, and thinned out so a long stay doesn't pile up
@@ -50,11 +58,26 @@
 		return dots;
 	}
 
+	/** The zone a point is inside (the nearest, if circles overlap), if any. */
+	function zoneAt(p: Point): Zone | undefined {
+		const here = L.latLng(p.lat, p.lon);
+		const distance = (z: Zone) => here.distanceTo([z.lat, z.lon]);
+		return zones
+			.filter((z) => distance(z) <= z.radius_m)
+			.sort((a, b) => distance(a) - distance(b))[0];
+	}
+
 	let container: HTMLDivElement; // the <div> below; Leaflet draws into it
 	// $state.raw: effects re-run when these are assigned, but Svelte doesn't wrap the
 	// Leaflet objects in its reactive proxies (Leaflet needs the real objects).
 	let map = $state.raw<L.Map>();
 	let layer = $state.raw<L.LayerGroup>(); // everything we draw on top of the base map
+	let path: L.LatLngTuple[] = []; // the day's dots in time order, for "Whole day"
+
+	/** Zoom to fit these points in the part of the map the panel/footer don't cover. */
+	function fit(points: L.LatLngTuple[], maxZoom: number) {
+		map?.fitBounds(points, { paddingTopLeft: padding.topLeft, paddingBottomRight: padding.bottomRight, maxZoom });
+	}
 
 	// Leaflet treats tooltip/popup strings as HTML; DOM nodes keep text from ever being parsed as markup.
 	function text(value: string): HTMLElement {
@@ -63,12 +86,32 @@
 		return span;
 	}
 
-	// 1. Create the map once, zoomed out on the whole world until a day is shown. The zoom buttons
-	//    and attribution go top right, away from the panel (left) and the mobile footer (bottom).
+	// 1. Create the map once, zoomed out on the whole world until a day is shown. The buttons and
+	//    attribution go bottom right, away from the panel (top left); on mobile they sit just above
+	//    the footer (see buttonsBottom). Leaflet stacks each control added to a bottom corner on top
+	//    of the earlier ones, so they're added bottom-up: attribution, "Whole day", zoom.
 	$effect(() => {
 		const m = L.map(container, { zoomControl: false, attributionControl: false }).setView([20, 0], 2);
-		L.control.zoom({ position: "topright" }).addTo(m);
-		L.control.attribution({ position: "topright" }).addTo(m);
+		L.control.attribution({ position: "bottomright" }).addTo(m);
+		// "Whole day", under the zoom buttons and styled like them.
+		const wholeDay = new L.Control({ position: "bottomright" });
+		wholeDay.onAdd = () => {
+			const bar = L.DomUtil.create("div", "leaflet-bar whole-day");
+			const button = L.DomUtil.create("a", "", bar);
+			button.href = "#";
+			button.title = "Whole day";
+			button.setAttribute("role", "button");
+			button.setAttribute("aria-label", "Show the whole day");
+			button.innerHTML = FRAME_ICON;
+			L.DomEvent.disableClickPropagation(bar);
+			L.DomEvent.on(button, "click", (event) => {
+				L.DomEvent.preventDefault(event);
+				if (path.length) fit(path, DAY_MAX_ZOOM);
+			});
+			return bar;
+		};
+		wholeDay.addTo(m);
+		L.control.zoom({ position: "bottomright" }).addTo(m);
 		map = m;
 		layer = L.layerGroup().addTo(m);
 		return () => m.remove(); // cleanup when the component goes away
@@ -106,7 +149,7 @@
 		const dots = dotsFor(points);
 
 		// The path: a line through the dots in time order.
-		const path = dots.map((p): L.LatLngTuple => [p.lat, p.lon]);
+		path = dots.map((p): L.LatLngTuple => [p.lat, p.lon]);
 		if (path.length > 1) L.polyline(path, { color: "#1e40af", weight: 2, opacity: 0.4 }).addTo(layer);
 
 		// Colour by order: the first dot is light blue, the last dark blue, and each one in between
@@ -129,21 +172,47 @@
 			})
 				.bindPopup(text(`${clock(p.t)} · ±${p.acc} m`))
 				.addTo(layer!);
-			if (isLast) dot.bringToFront(); // never hidden under an older dot
+			if (isLast) {
+				dot.bringToFront(); // never hidden under an older dot
+				// Always-visible label above it: the zone it's in, or the report time outside every zone.
+				dot.bindTooltip(text(zoneAt(p)?.name ?? clock(p.t)), {
+					permanent: true,
+					direction: "top",
+					offset: [0, -10], // clear of the dot (radius 8 + border 2)
+					className: "latest-label",
+				});
+			}
 		});
 
-		// Zoom to fit the day's dots, clear of the panel/footer, but not closer than street level (17).
+		// Today: start on the latest dot, centred in the part of the map the panel/footer don't
+		// cover. A past day: show all of it.
 		if (path.length) {
-			map.fitBounds(path, { paddingTopLeft: padding.topLeft, paddingBottomRight: padding.bottomRight, maxZoom: 17 });
+			if (focusLatest) fit([path[path.length - 1]], LATEST_ZOOM);
+			else fit(path, DAY_MAX_ZOOM);
 		}
 	});
 </script>
 
-<div bind:this={container}></div>
+<div bind:this={container} style:--buttons-bottom="{buttonsBottom}px"></div>
 
 <style>
 	div {
 		position: absolute;
 		inset: 0; /* the whole window; the panel and footer float on top */
+	}
+
+	/* Leaflet creates these elements itself, hence :global. */
+	div :global(.leaflet-bottom) {
+		bottom: var(--buttons-bottom);
+	}
+
+	div :global(.whole-day a) {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	div :global(.latest-label) {
+		font: 600 13px system-ui;
 	}
 </style>

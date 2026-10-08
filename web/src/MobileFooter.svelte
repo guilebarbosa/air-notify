@@ -8,14 +8,18 @@
 	interface Props {
 		controls: Snippet; // the date + "Check now" buttons
 		details: Snippet; // status line + timeline, shown when expanded
+		height?: number; // bindable: the footer's current height in pixels (0 on desktop, where it's hidden)
 	}
 
-	let { controls, details }: Props = $props();
+	let { controls, details, height = $bindable(0) }: Props = $props();
 
 	let expanded = $state(false);
 </script>
 
-<footer class="fixed inset-x-0 bottom-0 z-[1100] rounded-t-2xl bg-white px-4 pt-3 pb-4 shadow-[0_-4px_16px_rgba(0,0,0,0.15)] md:hidden">
+<footer
+	bind:clientHeight={height}
+	class="fixed inset-x-0 bottom-0 z-[1100] rounded-t-2xl bg-white px-4 pt-3 pb-4 shadow-[0_-4px_16px_rgba(0,0,0,0.15)] md:hidden"
+>
 	<div class="mb-3 flex items-center">
 		<Logo class="h-7 w-auto" />
 		<button
