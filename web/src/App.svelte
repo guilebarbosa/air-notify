@@ -85,7 +85,10 @@
 	<div class="grid gap-2 {status?.available ? 'grid-cols-2' : 'grid-cols-1'}">
 		<DayPicker {id} {placement} {days} {selected} onselect={(date) => select(date).catch(showError)} />
 		{#if status?.available}
-			<Button class="w-full" onclick={check} disabled={checking}>{checking ? "Checking…" : "Check now"}</Button>
+			<!-- Flowbite's buttons use the darker primary-700; 500 is the brand green itself. -->
+			<Button class="w-full bg-primary-500 hover:bg-primary-600" onclick={check} disabled={checking}>
+				{checking ? "Checking…" : "Check now"}
+			</Button>
 		{/if}
 	</div>
 {/snippet}

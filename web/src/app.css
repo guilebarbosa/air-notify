@@ -1,13 +1,12 @@
 @import "tailwindcss";
 
 /* Tailwind only generates the classes it finds in our code and in the Flowbite components we
-   use: scan just those folders (date picker, buttons, timeline, popover and what they're built
+   use: scan just those folders (date picker, buttons, popover and what they're built
    from), not the whole library. Add a folder here when using another Flowbite component. */
 @source "../node_modules/flowbite-svelte/dist/datepicker";
 @source "../node_modules/flowbite-svelte/dist/buttons";
 @source "../node_modules/flowbite-svelte/dist/toolbar";
 @source "../node_modules/flowbite-svelte/dist/spinner";
-@source "../node_modules/flowbite-svelte/dist/timeline";
 @source "../node_modules/flowbite-svelte/dist/popover";
 @source "../node_modules/flowbite-svelte/dist/utils";
 
