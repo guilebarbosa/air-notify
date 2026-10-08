@@ -9,8 +9,8 @@ poll_interval_minutes = 15
 # Ignore reports fuzzier than this (metres).
 max_accuracy_m = 100
 
-# Hysteresis: "arrived" fires within radius_m, "left" only beyond radius_m + exit_buffer_m.
-# Reports in between keep the previous state, so GPS jitter at the edge can't cause spam.
+# Hysteresis: "arrived" fires inside a zone, "left" only more than exit_buffer_m outside its
+# edge. Reports in between keep the previous state, so GPS jitter at the edge can't cause spam.
 exit_buffer_m = 50
 
 # ntfy_server = "https://ntfy.sh"   # or your self-hosted server (https only)
@@ -67,3 +67,14 @@ radius_m = 150
 # Optional, for this zone only (e.g. "Chegou na escola" / "Saiu da escola"):
 # arrive = "Arrived at school"
 # leave = "Left school"
+
+# A custom shape instead of a circle, for places a circle fits badly (a long park, a campus):
+# the corners in order, as [lat, lon]. The last corner joins back to the first.
+# [[zones]]
+# name = "Park"
+# outline = [
+#   [0.0, 0.0],
+#   [0.0, 0.0],
+#   [0.0, 0.0],
+#   [0.0, 0.0],
+# ]

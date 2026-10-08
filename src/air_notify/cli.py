@@ -29,9 +29,9 @@ from findmy import (
     TrustedDeviceSecondFactorMethod,
 )
 
-from .config import ConfigError, Paths, Settings, load_settings
+from .config import Circle, ConfigError, Paths, Settings, load_settings
 from .daemon import acquire_lock, daemon_pid, run_daemon
-from .geofence import Presence, classify, distance_m
+from .geofence import Presence, classify, distance_m, outside_by_m
 from .history import History
 from .importer import ExportFormatError, load_accessories
 from .keystore import AIRTAG, MAP_KEY, NTFY, SESSION, SecretStore, default_store
@@ -301,11 +301,16 @@ async def cmd_check(settings: Settings, paths: Paths, store: SecretStore, *, for
     age = datetime.now().astimezone() - latest.timestamp
     print(f"{len(fixes)} report(s). Latest: {_ago(age)} ago, accuracy ±{latest.accuracy_m:.0f} m")
     for zone in settings.zones:
-        d = distance_m(zone.lat, zone.lon, latest.lat, latest.lon)
         where = {Presence.INSIDE: "inside", Presence.OUTSIDE: "outside", None: "at the edge (hysteresis band)"}[
             classify(zone, latest, settings.exit_buffer_m)
         ]
-        print(f"  {zone.name}: {where}, {_distance(d)} from the centre (radius {zone.radius_m:.0f} m)")
+        if isinstance(zone.shape, Circle):
+            d = distance_m(zone.shape.lat, zone.shape.lon, latest.lat, latest.lon)
+            print(f"  {zone.name}: {where}, {_distance(d)} from the centre (radius {zone.shape.radius_m:.0f} m)")
+        elif (outside := outside_by_m(zone.shape, latest.lat, latest.lon)) > 0:
+            print(f"  {zone.name}: {where}, {_distance(outside)} from its outline")
+        else:
+            print(f"  {zone.name}: {where} its outline")
     return 0
 
 

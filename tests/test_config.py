@@ -5,9 +5,10 @@ import stat
 import pytest
 
 from air_notify import config
-from air_notify.config import ConfigError, Paths, find_config, load_settings, parse_settings
+from air_notify.config import Circle, ConfigError, Outline, Paths, find_config, load_settings, parse_settings
 
 ZONE = {"name": "School", "lat": 52.0, "lon": 5.0, "radius_m": 150}
+PARK = {"name": "Park", "outline": [[52.0, 5.0], [52.0, 5.01], [52.01, 5.01], [52.01, 5]]}
 
 
 def test_defaults():
@@ -36,11 +37,25 @@ def test_defaults():
         {"zones": [ZONE], "viewer": {"enabled": True}},  # the viewer needs history
         {"zones": [ZONE], "history_days": 30, "viewer": {"port": 0}},
         {"zones": [ZONE], "viewer": {"bind": "0.0.0.0"}},
+        {"zones": [{"lat": 52.0, "lon": 5.0, "radius_m": 150}]},  # no name
+        {"zones": [{**PARK, "outline": PARK["outline"][:2]}]},  # fewer than 3 corners
+        {"zones": [{**PARK, "outline": [*PARK["outline"], [52.0]]}]},  # a corner that isn't a pair
+        {"zones": [{**PARK, "outline": [*PARK["outline"], [52.0, True]]}]},
+        {"zones": [{**PARK, "outline": [*PARK["outline"], [95.0, 5.0]]}]},  # out of range
+        {"zones": [{**PARK, "outline": "52.0, 5.0"}]},
+        {"zones": [{**PARK, "radius_m": 100}]},  # an outline and a circle key
     ],
 )
 def test_invalid_configs(raw):
     with pytest.raises(ConfigError):
         parse_settings(raw)
+
+
+def test_circle_and_outline_zones():
+    school, park = parse_settings({"zones": [ZONE, {**PARK, "arrive": "Chegou no parque"}]}).zones
+    assert school.shape == Circle(52.0, 5.0, 150)
+    assert park.shape == Outline(((52.0, 5.0), (52.0, 5.01), (52.01, 5.01), (52.01, 5.0)))
+    assert park.arrive == "Chegou no parque"
 
 
 def test_custom_messages():

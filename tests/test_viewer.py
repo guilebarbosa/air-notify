@@ -6,6 +6,7 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 from conftest import SCHOOL, T0, north_of
 
+from air_notify.config import Outline, Settings, Zone
 from air_notify.geofence import Fix
 from air_notify.history import History
 from air_notify.state import ManualCheck
@@ -50,6 +51,19 @@ async def test_days_and_day_points(client):
     assert [z["name"] for z in data["zones"]] == ["School", "Home"]
     assert data["events"] == []  # both points are at school: nothing arrives or leaves
     assert data["max_accuracy_m"] == 100  # the default
+
+
+async def test_zones_are_circles_or_outlines(paths):
+    park = Zone("Park", Outline(((52.0, 5.0), (52.0, 5.01), (52.01, 5.01))))
+    history = History(paths.history, keep_days=30)
+    history.append([Fix(T0, 52.0, 5.0, 20)], now=T0)
+    async with TestClient(TestServer(create_app(Settings(zones=(SCHOOL, park)), history))) as c:
+        days = await (await c.get("/api/days")).json()
+        data = await (await c.get(f"/api/days/{days[0]['date']}")).json()
+    assert data["zones"] == [
+        {"name": "School", "lat": 52.0, "lon": 5.0, "radius_m": 150},
+        {"name": "Park", "outline": [[52.0, 5.0], [52.0, 5.01], [52.01, 5.01]]},
+    ]
 
 
 async def test_bad_date_is_rejected(client):

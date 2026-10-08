@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import math
+
 import pytest
 from conftest import HOME, SCHOOL, at, north_of
 
-from air_notify.geofence import Event, Fix, Presence, Transition, classify, distance_m, process
+from air_notify.config import Outline, Zone
+from air_notify.geofence import Event, Fix, Presence, Transition, classify, distance_m, outside_by_m, process
 
 
 def fix(minutes: float, zone=SCHOOL, meters: float = 0, accuracy: float = 20) -> Fix:
@@ -90,6 +93,69 @@ def test_moving_between_zones():
     assert events == [Event("School", Transition.LEAVE, at(10)), Event("Home", Transition.ARRIVE, at(10))]
 
 
+def test_one_fix_leaving_and_arriving_reports_the_leave_first():
+    # The other way round from the zone order (School, Home): still leave first, then arrive.
+    presence = {"School": Presence.OUTSIDE, "Home": Presence.INSIDE}
+    _, _, events = run([fix(10, zone=SCHOOL)], presence=presence)
+    assert events == [Event("Home", Transition.LEAVE, at(10)), Event("School", Transition.ARRIVE, at(10))]
+
+
 def test_removed_zone_state_is_dropped():
     presence, _, _ = run([], presence={"Old": Presence.INSIDE, "School": Presence.INSIDE})
     assert presence == {"School": Presence.INSIDE}
+
+
+# --- custom outlines ---------------------------------------------------------------------------
+
+
+def point(east_m: float, north_m: float) -> tuple[float, float]:
+    """A spot this many metres east and north of (52, 5)."""
+    return 52 + north_m / 111_195, 5 + east_m / (111_195 * math.cos(math.radians(52)))
+
+
+# An L, 200 m on each side, with the top-right 100 m square cut out:
+#   (0,200)─(100,200)
+#      │        │
+#      │     (100,100)─(200,100)
+#      │                  │
+#    (0,0)─────────────(200,0)
+L_SHAPE = Zone(
+    "Park",
+    Outline(tuple(point(e, n) for e, n in [(0, 0), (200, 0), (200, 100), (100, 100), (100, 200), (0, 200)])),
+)
+
+
+@pytest.mark.parametrize(
+    ("east", "north", "expected"),
+    [
+        (50, 50, Presence.INSIDE),
+        (150, 50, Presence.INSIDE),
+        (50, 150, Presence.INSIDE),
+        (50, 100, Presence.INSIDE),  # level with two corners: the crossing count must still be right
+        (130, 130, None),  # in the cut-out, 30 m from the edges: the hysteresis band
+        (160, 160, Presence.OUTSIDE),  # in the cut-out, 60 m from the edges
+        (100, -40, None),  # 40 m below the bottom edge
+        (100, -60, Presence.OUTSIDE),
+        (500, 50, Presence.OUTSIDE),
+    ],
+)
+def test_outline_with_hysteresis_band(east, north, expected):
+    lat, lon = point(east, north)
+    assert classify(L_SHAPE, Fix(at(0), lat, lon, 20), exit_buffer_m=50) == expected
+
+
+@pytest.mark.parametrize(
+    ("east", "north", "outside"),
+    [(160, 160, 60), (300, 50, 100), (250, 150, math.hypot(50, 50)), (-30, -40, 50)],
+)
+def test_outline_distance_to_the_nearest_edge_or_corner(east, north, outside):
+    assert outside_by_m(L_SHAPE.shape, *point(east, north)) == pytest.approx(outside, abs=0.5)
+
+
+def test_arrive_and_leave_an_outline():
+    def at_spot(minutes, east, north):
+        return Fix(at(minutes), *point(east, north), 20)
+
+    fixes = [at_spot(0, 500, 50), at_spot(10, 50, 150), at_spot(20, 160, 160)]
+    _, _, events = process({}, None, fixes, (L_SHAPE,), max_accuracy_m=100, exit_buffer_m=50)
+    assert events == [Event("Park", Transition.ARRIVE, at(10)), Event("Park", Transition.LEAVE, at(20))]

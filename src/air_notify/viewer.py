@@ -17,7 +17,7 @@ from typing import Protocol
 
 from aiohttp import web
 
-from .config import Settings
+from .config import Circle, Settings, Zone
 from .history import History
 from .maps import DEFAULT_STYLE, STYLES
 from .timeline import day_events
@@ -96,6 +96,13 @@ async def _guard(
     return response
 
 
+def _zone_json(zone: Zone) -> dict:
+    """A circle has lat, lon and radius_m; a custom shape has an outline of [lat, lon] corners."""
+    if isinstance(zone.shape, Circle):
+        return {"name": zone.name, "lat": zone.shape.lat, "lon": zone.shape.lon, "radius_m": zone.shape.radius_m}
+    return {"name": zone.name, "outline": [list(corner) for corner in zone.shape.corners]}
+
+
 def create_app(
     settings: Settings,
     history: History,
@@ -103,7 +110,7 @@ def create_app(
     map_key: Callable[[], str | None] = lambda: None,
 ) -> web.Application:
     """`map_key` is called per request, so a key saved with `air-notify set-map-key` works without a restart."""
-    zones = [{"name": z.name, "lat": z.lat, "lon": z.lon, "radius_m": z.radius_m} for z in settings.zones]
+    zones = [_zone_json(z) for z in settings.zones]
     style = STYLES[settings.viewer.map]
     fallback = STYLES[DEFAULT_STYLE]
 

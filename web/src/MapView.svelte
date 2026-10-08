@@ -58,13 +58,29 @@
 		return dots;
 	}
 
-	/** The zone a point is inside (the nearest, if circles overlap), if any. */
+	/** The first zone a point is inside, if any. */
 	function zoneAt(p: Point): Zone | undefined {
-		const here = L.latLng(p.lat, p.lon);
-		const distance = (z: Zone) => here.distanceTo([z.lat, z.lon]);
-		return zones
-			.filter((z) => distance(z) <= z.radius_m)
-			.sort((a, b) => distance(a) - distance(b))[0];
+		return zones.find((z) =>
+			"outline" in z
+				? insideOutline(p, z.outline)
+				: L.latLng(p.lat, p.lon).distanceTo([z.lat, z.lon]) <= z.radius_m,
+		);
+	}
+
+	/**
+	 * Ray casting, like the server's check: follow a line from the point due east and count the
+	 * edges it crosses; an odd count means inside. Plain lat/lon is fine for in-or-out (squashing
+	 * the map sideways doesn't move a point across an edge).
+	 */
+	function insideOutline(p: Point, corners: [number, number][]): boolean {
+		let inside = false;
+		corners.forEach(([lat1, lon1], i) => {
+			const [lat2, lon2] = corners[(i + 1) % corners.length]; // the last corner joins the first
+			if (lat1 > p.lat !== lat2 > p.lat && lon1 + ((p.lat - lat1) * (lon2 - lon1)) / (lat2 - lat1) > p.lon) {
+				inside = !inside;
+			}
+		});
+		return inside;
 	}
 
 	let container: HTMLDivElement; // the <div> below; Leaflet draws into it
@@ -138,12 +154,15 @@
 		if (!map || !layer) return;
 		layer.clearLayers();
 
-		// Zones: the real geofence area (radius_m), each in its own colour; hover for the name.
+		// Zones: the real geofence area (a circle or a custom outline), each in its own colour;
+		// hover for the name.
 		zones.forEach((z, i) => {
-			const color = zoneColor(i);
-			L.circle([z.lat, z.lon], { radius: z.radius_m, color, weight: 1, fillOpacity: 0.2 })
-				.bindTooltip(text(z.name))
-				.addTo(layer!);
+			const style = { color: zoneColor(i), weight: 1, fillOpacity: 0.2 };
+			const shape =
+				"outline" in z
+					? L.polygon(z.outline, style)
+					: L.circle([z.lat, z.lon], { radius: z.radius_m, ...style });
+			shape.bindTooltip(text(z.name)).addTo(layer!);
 		});
 
 		const dots = dotsFor(points);

@@ -12,11 +12,19 @@ export interface Point {
 	acc: number; // metres
 }
 
-export interface Zone {
+/** A zone is a circle or a custom shape (outline). */
+export type Zone = CircleZone | OutlineZone;
+
+export interface CircleZone {
 	name: string;
 	lat: number;
 	lon: number;
 	radius_m: number;
+}
+
+export interface OutlineZone {
+	name: string;
+	outline: [number, number][]; // corners in order, as [lat, lon]; the last joins back to the first
 }
 
 /** An arrival or departure, computed on the server with the same rules and wording as the alerts. */

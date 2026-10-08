@@ -80,6 +80,21 @@ air-notify looks for the config in this order:
 
 Each zone is a name, coordinates and a radius. To get coordinates, right-click a spot in Google Maps and click the first line. Allow for AirTag positions often being 20–60 m off: about 100 m suits a home, and larger sites need more.
 
+A circle fits some places badly, e.g. a long park or a campus, where a circle at the entrance misses most of it. Such a zone can be a custom shape instead: an `outline` with the corners in order, each as `[lat, lon]`. The last corner joins back to the first, and any shape works, including L-shapes.
+
+```toml
+[[zones]]
+name = "Park"
+outline = [
+  [48.8484, 2.3327],
+  [48.8483, 2.3398],
+  [48.8443, 2.3389],
+  [48.8445, 2.3352],
+]
+```
+
+"Arrived" fires as soon as a report is inside the outline. "Left" only fires once a report is more than `exit_buffer_m` outside it, like with circles.
+
 To poll less often at night, add a schedule by time of day:
 
 ```toml

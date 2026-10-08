@@ -85,11 +85,23 @@ def find_config(data_dir: Path) -> Path:
 
 
 @dataclass(frozen=True)
-class Zone:
-    name: str
+class Circle:
     lat: float
     lon: float
     radius_m: float
+
+
+@dataclass(frozen=True)
+class Outline:
+    """A custom shape: its corners in order, as (lat, lon). The last corner joins back to the first."""
+
+    corners: tuple[tuple[float, float], ...]
+
+
+@dataclass(frozen=True)
+class Zone:
+    name: str
+    shape: Circle | Outline
     # Optional alert text for this zone, overriding [messages] arrive/leave. Useful in
     # languages where the wording depends on the place ("Chegou na escola", "Chegou em casa").
     arrive: str | None = None
@@ -195,8 +207,8 @@ _SETTINGS_KEYS = {
 }
 _INTERVAL_KEYS = {"time", "interval"}
 _VIEWER_KEYS = {"enabled", "host", "port", "map"}
-_ZONE_REQUIRED = {"name", "lat", "lon", "radius_m"}
-_ZONE_OPTIONAL = {"arrive", "leave"}
+_CIRCLE_KEYS = {"lat", "lon", "radius_m"}
+_ZONE_KEYS = {"name", "outline", "arrive", "leave", *_CIRCLE_KEYS}
 _MESSAGE_KEYS = {"arrive", "leave", "time"}
 
 
@@ -331,30 +343,63 @@ def _check_template(text: str, where: str) -> str:
 
 def _parse_zone(raw: dict) -> Zone:
     label = repr(raw.get("name", "?"))
-    if missing := _ZONE_REQUIRED - set(raw):
-        msg = f"Zone {label} is missing: {', '.join(sorted(missing))}"
-        raise ConfigError(msg)
-    if unknown := set(raw) - _ZONE_REQUIRED - _ZONE_OPTIONAL:
+    if unknown := set(raw) - _ZONE_KEYS:
         msg = f"Zone {label} has unknown keys: {', '.join(sorted(unknown))}"
         raise ConfigError(msg)
-    zone = Zone(
-        name=str(raw["name"]).strip(),
-        lat=float(raw["lat"]),
-        lon=float(raw["lon"]),
-        radius_m=float(raw["radius_m"]),
+    name = str(raw.get("name", "")).strip()
+    if not name:
+        msg = "Every zone needs a name"
+        raise ConfigError(msg)
+    # Two kinds: a circle (lat, lon, radius_m) or a custom shape (outline).
+    if "outline" in raw:
+        if both := _CIRCLE_KEYS & set(raw):
+            msg = f"Zone {label} has an outline and {', '.join(sorted(both))}: give one or the other"
+            raise ConfigError(msg)
+        shape: Circle | Outline = _parse_outline(raw["outline"], label)
+    else:
+        if missing := _CIRCLE_KEYS - set(raw):
+            msg = f"Zone {label} is missing: {', '.join(sorted(missing))} (or give an outline instead)"
+            raise ConfigError(msg)
+        shape = _parse_circle(raw, label)
+    return Zone(
+        name=name,
+        shape=shape,
         arrive=_check_template(str(raw["arrive"]), f"Zone {label} arrive") if "arrive" in raw else None,
         leave=_check_template(str(raw["leave"]), f"Zone {label} leave") if "leave" in raw else None,
     )
-    if not zone.name:
-        msg = "Zone name can't be empty"
+
+
+def _parse_circle(raw: dict, label: str) -> Circle:
+    circle = Circle(lat=float(raw["lat"]), lon=float(raw["lon"]), radius_m=float(raw["radius_m"]))
+    _check_coordinates(circle.lat, circle.lon, label)
+    if circle.radius_m <= 0:
+        msg = f"Zone {label} needs a positive radius_m"
         raise ConfigError(msg)
-    if zone.lat == 0 and zone.lon == 0:
-        msg = f"Zone {zone.name!r} still has the example's placeholder coordinates (0, 0)"
+    return circle
+
+
+def _parse_outline(raw: object, label: str) -> Outline:
+    if not isinstance(raw, list) or len(raw) < 3:
+        msg = f"Zone {label}'s outline needs at least 3 corners, each a [lat, lon] pair"
         raise ConfigError(msg)
-    if not (-90 <= zone.lat <= 90 and -180 <= zone.lon <= 180):
-        msg = f"Zone {zone.name!r} has out-of-range coordinates"
+    corners = []
+    for corner in raw:
+        numbers = isinstance(corner, list) and all(
+            isinstance(v, int | float) and not isinstance(v, bool) for v in corner
+        )
+        if not numbers or len(corner) != 2:
+            msg = f"Zone {label}'s outline has a corner that isn't a [lat, lon] pair: {corner!r}"
+            raise ConfigError(msg)
+        lat, lon = float(corner[0]), float(corner[1])
+        _check_coordinates(lat, lon, label)
+        corners.append((lat, lon))
+    return Outline(tuple(corners))
+
+
+def _check_coordinates(lat: float, lon: float, label: str) -> None:
+    if lat == 0 and lon == 0:
+        msg = f"Zone {label} still has the example's placeholder coordinates (0, 0)"
         raise ConfigError(msg)
-    if zone.radius_m <= 0:
-        msg = f"Zone {zone.name!r} needs a positive radius_m"
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        msg = f"Zone {label} has out-of-range coordinates"
         raise ConfigError(msg)
-    return zone
