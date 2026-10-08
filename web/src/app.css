@@ -141,7 +141,39 @@ body,
 	font: 14px system-ui, sans-serif;
 }
 
+html {
+	/* The map's land colour (CARTO Voyager): where a browser paints a plain colour around the page,
+	   e.g. behind its own bars, it blends in with the map. */
+	background: #f9f6ef;
+}
+
 #app {
 	position: relative;
 	overflow: hidden;
+}
+
+/* Phones and tablets: the map also shows behind the status bar / Dynamic Island. iPhone Safari
+   only draws page content there once the page has been scrolled, so the page gets a couple of
+   pixels of scroll (main.ts scrolls it by one) while #app stays pinned to the screen, and the map
+   reaches up behind the bar (--bleed-top; MapView keeps its centring and padding right). */
+@media (pointer: coarse) {
+	:root {
+		--bleed-top: 80px;
+	}
+
+	html,
+	body {
+		height: auto;
+	}
+
+	body {
+		min-height: calc(100dvh + 2px);
+	}
+
+	#app {
+		position: fixed;
+		inset: 0;
+		height: auto;
+		overflow: visible;
+	}
 }

@@ -103,7 +103,10 @@
 
 	/** Zoom to fit these points in the part of the map the panel/footer don't cover. */
 	function fit(points: L.LatLngTuple[], maxZoom: number) {
-		map?.fitBounds(points, { paddingTopLeft: padding.topLeft, paddingBottomRight: padding.bottomRight, maxZoom });
+		// On phones the map reaches up behind the status bar (--bleed-top, app.css): keep clear of that too.
+		const bleed = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--bleed-top")) || 0;
+		const [left, top] = padding.topLeft;
+		map?.fitBounds(points, { paddingTopLeft: [left, top + bleed], paddingBottomRight: padding.bottomRight, maxZoom });
 	}
 
 	// Leaflet treats tooltip/popup strings as HTML; DOM nodes keep text from ever being parsed as markup.
@@ -250,6 +253,10 @@
 	.leaflet {
 		position: absolute;
 		inset: 0; /* the whole window; the panel and footer float on top */
+	}
+
+	.leaflet {
+		top: calc(-1 * var(--bleed-top, 0px)); /* phones: also behind the status bar (app.css) */
 	}
 
 	/* Bottom right, above the attribution. Clear of the mobile footer (--buttons-bottom) and, with
