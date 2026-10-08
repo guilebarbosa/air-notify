@@ -5,8 +5,16 @@
     <!-- viewport-fit=cover: the map runs under the iPhone's Dynamic Island / notch; the panel,
          footer and map buttons keep clear of it with env(safe-area-inset-*). -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- Opened from the iPhone Home Screen: full screen, as an app, and with the map running under
+         the status bar too. Its clock and battery are then white; a shade at the top of the page
+         keeps them readable. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>airNotify</title>
-    <!-- Cream icons for the dev server, red for the built app (the Pi): %MODE% is Vite's build mode. -->
+    <!-- Cream icons for the dev server, red for the built app (the Pi), by Vite's build mode.
+         The PNG is for browsers without SVG favicons (iPhone Safari); the others take the SVG. -->
+    <link rel="icon" type="image/png" sizes="180x180" href="/icons/apple-touch-icon-%MODE%.png" />
     <link rel="icon" type="image/svg+xml" href="/icons/icon-%MODE%.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon-%MODE%.png" />
   </head>

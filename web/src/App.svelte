@@ -123,6 +123,13 @@
 
 <MobileFooter controls={mobileControls} {details} bind:height={footerHeight} />
 
+<!-- Under the iPhone's status bar (Home Screen app): a light shade keeps its white clock and
+     battery readable over the map. Zero height everywhere else (no safe area at the top). -->
+<div
+	class="pointer-events-none fixed inset-x-0 top-0 z-[1040] h-[calc(env(safe-area-inset-top)*1.6)] bg-linear-to-b from-black/30 to-transparent"
+	aria-hidden="true"
+></div>
+
 {#snippet mobileControls()}
 	{@render controls("day-mobile", "top")}
 {/snippet}
