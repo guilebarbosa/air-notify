@@ -81,9 +81,10 @@
 	});
 </script>
 
-<!-- The date and "Check now" buttons, side by side across the full width. -->
+<!-- The date navigation and "Check now", side by side across the full width; the dates get
+     whatever "Check now" doesn't need. -->
 {#snippet controls(id: string, placement: "top" | "bottom")}
-	<div class="grid gap-2 {status?.available ? 'grid-cols-2' : 'grid-cols-1'}">
+	<div class="grid gap-2 {status?.available ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-1'}">
 		<DayPicker {id} {placement} {days} {selected} onselect={(date) => select(date).catch(showError)} />
 		{#if status?.available}
 			<!-- Flowbite's buttons use the darker primary-700; 500 is the brand green itself. -->
