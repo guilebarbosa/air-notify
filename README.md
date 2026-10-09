@@ -1,8 +1,24 @@
-# air-notify
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-on-dark.svg">
+    <img src="docs/logo.svg" alt="airNotify" height="56">
+  </picture>
+</h1>
 
 Push notifications (via [ntfy](https://ntfy.sh)) when an AirTag arrives at or leaves places you define.
 It's a small daemon built on [FindMy.py](https://github.com/malmeloo/FindMy.py) that polls Apple's Find My network every 15 minutes.
 It runs on macOS or Linux (e.g. a Raspberry Pi).
+Optionally, it keeps a location history and shows it on a map in your browser, phone included, from home or, [with Tailscale](#opening-the-viewer-from-anywhere-tailscale), from anywhere.
+
+> [!NOTE]
+> A hobby project, vibe coded with an AI assistant. It's also used every day by my family and me, so it's certified to work (on our machine, at least).
+
+<p>
+  <img src="docs/screenshot-desktop.webp" alt="The map viewer on a computer: a day's path across Paris with three zones, and the day's arrivals and departures in a panel" width="74%">
+  <img src="docs/screenshot-mobile.webp" alt="The map viewer on a phone: the map above, the latest arrivals and departures and the date buttons below" width="21%">
+</p>
+
+<sub>The map viewer on a computer and on a phone, with mock data.</sub>
 
 ## Where your data goes
 
@@ -24,6 +40,7 @@ It runs on macOS or Linux (e.g. a Raspberry Pi).
 
 **Network hosts:** `gsa.apple.com`, `setup.icloud.com`, `gateway.icloud.com` and your ntfy server.
 There is one more: `anisette.dl.mikealmel.ooo`, the FindMy.py maintainer's server. It's contacted **once**, to download Apple's anisette libraries into `ani_libs.bin`. It receives no account data.
+The map viewer adds the map tile server, and [Tailscale](#opening-the-viewer-from-anywhere-tailscale) if you use it for remote access.
 
 Other hardening:
 - **Logging:** FindMy.py's own logs are capped at WARNING, because it logs the Apple ID at INFO and its anisette dependency logs device secrets at DEBUG.
@@ -174,6 +191,11 @@ deploy/pi-service.sh install    # Linux: systemd user service
 - **Linux:** enable linger so the service also runs at boot without a login. Check with `loginctl show-user $USER -p Linger`, fix with `sudo loginctl enable-linger $USER`.
 - **macOS:** nothing is polled while the Mac sleeps. If it's always on power, turn on System Settings → Battery → Options → "Prevent automatic sleeping on power adapter when the display is off".
 
+### 5. Optional: the map viewer, at home and away
+
+- **At home:** turn on the history and the viewer, see [Location history and map viewer](#location-history-and-map-viewer-optional).
+- **Away from home:** reach it through Tailscale, see [Opening the viewer from anywhere](#opening-the-viewer-from-anywhere-tailscale).
+
 ## Day to day
 
 ```sh
@@ -211,7 +233,14 @@ With `history_days = 30` in `config.toml`, the daemon appends every new report t
 
 Only reports that arrive while the daemon runs are recorded. Apple keeps just the latest few, so there's no backfill.
 
-The **map viewer** lists the recorded days. Picking one shows that day's reports, with the path, the accuracy circles and your zones, on an OpenStreetMap map. Enable it under `[viewer]` and the daemon serves it; `air-notify view` serves it on its own.
+The **map viewer** shows one recorded day at a time, in any browser. Enable it under `[viewer]` and the daemon serves it; `air-notify view` serves it on its own.
+
+- **The map:** the day's reports as a path of dots, from light to dark blue by time. The latest is red, with a label naming the zone it's in, or its time outside every zone. Reports less accurate than `max_accuracy_m` are hidden, as they are for the alerts, and dots within 100 m of each other are merged. Your zones are drawn as circles or outlines.
+- **Starting view:** today opens zoomed in on the latest location, and a past day shows the whole day. The map buttons switch between the two (**Last location**, **Whole day**).
+- **The timeline:** the day's arrivals and departures, worked out with the same rules and wording as the alerts.
+- **Days:** step through them with the arrows around the date, or tap the date to pick one in a calendar.
+- **Check now:** asks the daemon for an immediate check (see [Day to day](#day-to-day)).
+- **On a phone:** the map sits on top, with the latest events and the buttons below it. Older events fold away behind a chevron.
 
 ```toml
 history_days = 30
@@ -222,10 +251,10 @@ host = "0.0.0.0"   # reachable from other devices on your network; default 127.0
 port = 8080
 ```
 
-Then open `http://<machine>:8080`, e.g. `http://raspberrypi.local:8080`.
+Then open `http://<machine>:8080`, e.g. `http://raspberrypi.local:8080`. Away from home, see [Tailscale](#opening-the-viewer-from-anywhere-tailscale) below.
 
 - **No password:** with `host = "0.0.0.0"`, anyone on your network can see the history. Leave the default `127.0.0.1` to keep it to the machine itself; from elsewhere, use an SSH tunnel: `ssh -L 8080:localhost:8080 <user>@<host>`.
-- **What else your browser loads:** only map tiles, from OpenStreetMap or the provider you choose (below); Leaflet is bundled into the page. The tile server sees which area you're looking at. The coordinates themselves only travel between the viewer and your browser.
+- **What else your browser loads:** only map tiles, from OpenStreetMap or the provider you choose (below). Leaflet and the logo's font are bundled into the page. The tile server sees which area you're looking at. The coordinates themselves only travel between the viewer and your browser.
 - **Other websites can't read it:** the viewer only answers requests addressed to an IP address, `localhost`, a `.local` name or the machine's own name. That blocks DNS rebinding, where a website you visit points its own domain at your network to read pages from devices on it.
 
 ### Map styles
@@ -249,6 +278,26 @@ Each CARTO style also comes without place-name labels: add `-nolabels`, e.g. `"c
 
 **The key is visible:** it's part of every tile request your browser makes, so anyone who opens the viewer can see it. If CARTO's dashboard allows it, restrict the key to the addresses you open the viewer from.
 
+### Opening the viewer from anywhere (Tailscale)
+
+The viewer has no password, so don't open it to the internet with port forwarding. To use it away from home, [Tailscale](https://tailscale.com) puts your phone and the machine on a private network of their own.
+- **No router changes:** it works behind any internet connection, including ones without a public IPv4 address (CGNAT, DS-Lite).
+- **Cost:** the free personal plan is enough.
+
+1. **On the machine running air-notify** (Raspberry Pi OS, Debian). On a Mac, install the Tailscale app instead.
+   ```sh
+   curl -fsSL https://tailscale.com/install.sh | sh   # Tailscale's official installer
+   sudo tailscale up                                  # prints a link: open it and sign in
+   ```
+2. **On your phone,** install the Tailscale app and sign in with the same account. Leave it on: it only carries traffic to your own devices, so the rest of your browsing is unaffected, on Wi-Fi or mobile data.
+3. **In `config.toml`,** the viewer must listen beyond the machine itself: `host = "0.0.0.0"` under `[viewer]`. Restart after changing it.
+4. **Open** `http://<machine>:8080` on the phone, where `<machine>` is the machine's name, e.g. `http://raspberrypi:8080`. This uses MagicDNS, which is on by default. The machine's Tailscale address works too, e.g. `http://100.101.102.103:8080`; the app shows it.
+
+Good to know:
+- **Names that don't work:** `.local` names only work on your home network. The long `<machine>.<tailnet>.ts.net` name is refused by the viewer's [DNS-rebinding guard](#location-history-and-map-viewer-optional). If you renamed the machine in Tailscale, the short name no longer matches its hostname; use the Tailscale address instead.
+- **Who can reach it:** your home network, and the devices signed in to your Tailscale account.
+- **What Tailscale sees:** its servers set up the connections and know which devices you have. The traffic itself is end-to-end encrypted (WireGuard) between your devices.
+
 ### Working on the viewer UI
 
 The UI is a small Svelte + TypeScript app in `web/`. `npm run build` writes it into `src/air_notify/static/`, and those built files are committed, so the machine running air-notify never needs Node.
@@ -262,6 +311,8 @@ npm run build                                       # before committing UI chang
 ```
 
 - **Without a daemon:** set `AIR_NOTIFY_API` to an `air-notify view` running locally, which is the default (`http://localhost:8080`).
+- **Saving the address:** put `AIR_NOTIFY_API=…` in `web/.env.local` (gitignored) instead of typing it each time.
+- **Telling them apart:** the dev server uses the cream app icon, the built app the red one.
 - **Registry:** `web/.npmrc` pins the public npm registry, so `package-lock.json` never points at a private one.
 
 ## Moving to another machine
