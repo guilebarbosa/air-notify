@@ -32,6 +32,7 @@
 	let { tiles, points, zones, maxAccuracy, padding, focusLatest }: Props = $props();
 
 	const MIN_DISTANCE_M = 100; // a report this close to the last dot drawn doesn't get its own dot
+	const MAX_SPEED_KMH = 120; // a report reached and left faster than this is wrong (see plausible())
 	const LATEST_COLOR = "#b93636"; // brick (brand red): the latest dot
 	const LATEST_ZOOM = 16; // a few streets around the latest dot
 	const DAY_MAX_ZOOM = 17; // "Whole day": never closer than street level, even for a day spent in one place
@@ -49,14 +50,14 @@
 	const FRAME = "M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"; // four corners: the whole day
 
 	/**
-	 * The reports worth a dot: accurate enough, and thinned out so a long stay doesn't pile up
-	 * dozens of dots. A report within MIN_DISTANCE_M of the last dot is skipped, except the
+	 * The reports worth a dot: accurate enough, plausible (see plausible()), and thinned out so a
+	 * long stay doesn't pile up dozens of dots. A report within MIN_DISTANCE_M of the last dot is skipped, except the
 	 * newest, which replaces that dot, so the map always shows where he was last seen.
 	 */
 	function dotsFor(reports: Point[]): Point[] {
 		// Less accurate reports can be hundreds of metres off (often a passing phone's own position
 		// on the next street) and made the path zigzag.
-		const accurate = reports.filter((p) => p.acc <= maxAccuracy);
+		const accurate = plausible(reports.filter((p) => p.acc <= maxAccuracy));
 		const dots: Point[] = [];
 		accurate.forEach((p, i) => {
 			const last = dots[dots.length - 1];
@@ -65,6 +66,34 @@
 			else if (i === accurate.length - 1) dots[dots.length - 1] = p; // the newest replaces the nearby dot
 		});
 		return dots;
+	}
+
+	/**
+	 * Drops reports that can't be right: getting there from the report before and on to the report
+	 * after would both be faster than MAX_SPEED_KMH, while those two agree with each other (so a
+	 * genuinely fast trip, where they don't, is kept). A passing phone sometimes sends a position
+	 * minutes old, with a confident ±. The newest report has nothing after it yet: it's held back
+	 * if reaching it was too fast, until the next report settles it.
+	 */
+	function plausible(reports: Point[]): Point[] {
+		const kept: Point[] = [];
+		reports.forEach((p, i) => {
+			const prev = kept[kept.length - 1]; // the last report that passed
+			const next = reports[i + 1];
+			const wrong =
+				prev !== undefined &&
+				kmh(prev, p) > MAX_SPEED_KMH &&
+				(next === undefined || (kmh(p, next) > MAX_SPEED_KMH && kmh(prev, next) <= MAX_SPEED_KMH));
+			if (!wrong) kept.push(p);
+		});
+		return kept;
+	}
+
+	/** The lowest speed (km/h) that could link two reports, giving both the benefit of their ±. */
+	function kmh(a: Point, b: Point): number {
+		const metres = Math.max(0, L.latLng(a.lat, a.lon).distanceTo([b.lat, b.lon]) - a.acc - b.acc);
+		const seconds = Math.max(10, Math.abs(Date.parse(b.t) - Date.parse(a.t)) / 1000); // reports come in 10 s steps
+		return (metres / seconds) * 3.6;
 	}
 
 	/** The first zone a point is inside, if any. */
