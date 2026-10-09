@@ -1,6 +1,7 @@
 <script lang="ts">
-	// Layout: the map fills the window. On desktop a floating panel on the left holds the date
-	// and "Check now" buttons and the day's timeline; on mobile a footer does (see MobileFooter).
+	// Layout. Desktop: the map fills the window, and a floating panel on the left holds the date
+	// and "Check now" buttons and the day's timeline. Mobile: the logo in a header, the map as a
+	// card, and a footer with the buttons and the latest events (see MobileFooter).
 	import Button from "flowbite-svelte/Button.svelte";
 	import { onMount } from "svelte";
 
@@ -22,11 +23,11 @@
 	let checking = $state(false);
 	let tiles = $state<MapTiles | null>(null);
 	let desktop = $state(true);
-	let footerHeight = $state(0); // the mobile footer's; 0 on desktop
 
-	// Keep the day's points clear of the floating panel (desktop) or the footer (mobile).
+	// Keep the day's points clear of the floating panel (desktop), and of the map buttons (bottom
+	// right) and the latest dot's label (above it).
 	const padding: Padding = $derived(
-		desktop ? { topLeft: [400, 40], bottomRight: [40, 40] } : { topLeft: [30, 30], bottomRight: [30, 140] },
+		desktop ? { topLeft: [400, 40], bottomRight: [40, 40] } : { topLeft: [24, 40], bottomRight: [60, 24] },
 	);
 
 	const showError = (error: unknown) => {
@@ -95,33 +96,49 @@
 	</div>
 {/snippet}
 
-{#snippet details()}
-	<StatusLine {status} {message} />
-	<DayTimeline events={day?.events ?? []} />
+<!-- Mobile: the footer shows a message itself; this is the summary in the list's corner. -->
+{#snippet statusLine()}
+	<StatusLine {status} message={null} class="leading-5" />
 {/snippet}
 
-<MapView
-	{tiles}
-	points={day?.points ?? []}
-	zones={day?.zones ?? []}
-	maxAccuracy={day?.max_accuracy_m ?? Infinity}
-	{padding}
-	focusLatest={day?.date === todayIso()}
-	buttonsBottom={footerHeight}
-/>
+<!-- Mobile: header, map card and footer stacked on a white page. Desktop: the map fills the
+     window, with the panel floating on top. -->
+<div class="flex h-full flex-col md:block">
+	<header
+		class="shrink-0 ps-[max(1rem,env(safe-area-inset-left))] pe-[max(1rem,env(safe-area-inset-right))] pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 md:hidden"
+	>
+		<h1><Logo class="h-7 w-auto" /></h1>
+	</header>
+
+	<!-- The map card, rounded like the panel (no shadow: it sat heavily on the footer buttons).
+	     `isolate` keeps Leaflet's layers inside it (and lets Safari clip them to the rounded corners). -->
+	<main
+		class="relative isolate mx-3 min-h-0 flex-1 overflow-hidden rounded-2xl md:absolute md:inset-0 md:m-0 md:rounded-none"
+	>
+		<MapView
+			{tiles}
+			points={day?.points ?? []}
+			zones={day?.zones ?? []}
+			maxAccuracy={day?.max_accuracy_m ?? Infinity}
+			{padding}
+			focusLatest={day?.date === todayIso()}
+		/>
+	</main>
+
+	<MobileFooter controls={mobileControls} status={statusLine} {message} events={day?.events ?? []} />
+</div>
 
 <!-- No overflow on the panel itself (only the timeline part scrolls), so the calendar popover isn't clipped. -->
 <aside
 	class="absolute top-[max(1rem,env(safe-area-inset-top))] left-[max(1rem,env(safe-area-inset-left))] z-[1100] hidden max-h-[calc(100%-2rem)] w-[22rem] flex-col gap-4 rounded-2xl bg-white/95 p-5 shadow-xl md:flex"
 >
-	<h1><Logo class="h-12 w-auto" /></h1>
+	<h1><Logo class="h-8 w-auto" /></h1>
 	{@render controls("day-desktop", "bottom")}
 	<div class="flex min-h-0 flex-col gap-3 overflow-y-auto">
-		{@render details()}
+		<StatusLine {status} {message} />
+		<DayTimeline events={day?.events ?? []} />
 	</div>
 </aside>
-
-<MobileFooter controls={mobileControls} {details} bind:height={footerHeight} />
 
 {#snippet mobileControls()}
 	{@render controls("day-mobile", "top")}

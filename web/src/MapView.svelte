@@ -27,10 +27,9 @@
 		maxAccuracy: number; // metres; less accurate reports aren't drawn (the alerts ignore them too)
 		padding: Padding; // the floating panel (desktop) or footer (mobile) covers part of the map
 		focusLatest: boolean; // start zoomed in on the latest dot (today) rather than on the whole day
-		buttonsBottom: number; // pixels the map buttons stay above (the mobile footer; 0 on desktop)
 	}
 
-	let { tiles, points, zones, maxAccuracy, padding, focusLatest, buttonsBottom }: Props = $props();
+	let { tiles, points, zones, maxAccuracy, padding, focusLatest }: Props = $props();
 
 	const MIN_DISTANCE_M = 100; // a report this close to the last dot drawn doesn't get its own dot
 	const LATEST_COLOR = "#b93636"; // brick (brand red): the latest dot
@@ -103,10 +102,7 @@
 
 	/** Zoom to fit these points in the part of the map the panel/footer don't cover. */
 	function fit(points: L.LatLngTuple[], maxZoom: number) {
-		// On phones the map reaches up behind the status bar (--bleed-top, app.css): keep clear of that too.
-		const bleed = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--bleed-top")) || 0;
-		const [left, top] = padding.topLeft;
-		map?.fitBounds(points, { paddingTopLeft: [left, top + bleed], paddingBottomRight: padding.bottomRight, maxZoom });
+		map?.fitBounds(points, { paddingTopLeft: padding.topLeft, paddingBottomRight: padding.bottomRight, maxZoom });
 	}
 
 	// Leaflet treats tooltip/popup strings as HTML; DOM nodes keep text from ever being parsed as markup.
@@ -125,9 +121,17 @@
 		const sync = () => (zoom = { level: m.getZoom(), min: m.getMinZoom(), max: m.getMaxZoom() });
 		m.on("zoomend zoomlevelschange", sync);
 		sync();
+		// Leaflet only notices window resizes; on mobile the map card also changes size when the
+		// footer grows or shrinks.
+		const resize = new ResizeObserver(() => m.invalidateSize());
+		resize.observe(container);
 		map = m;
 		layer = L.layerGroup().addTo(m);
-		return () => m.remove(); // cleanup when the component goes away
+		return () => {
+			// cleanup when the component goes away
+			resize.disconnect();
+			m.remove();
+		};
 	});
 
 	// 2. The base map: tile images from the provider /api/map names (OpenStreetMap, CARTO, ...).
@@ -225,7 +229,7 @@
 	</svg>
 {/snippet}
 
-<div class="map" style:--buttons-bottom="{buttonsBottom}px">
+<div class="map">
 	<div class="leaflet" bind:this={container}></div>
 
 	<div class="buttons flex flex-col gap-2">
@@ -255,26 +259,30 @@
 		inset: 0; /* the whole window; the panel and footer float on top */
 	}
 
-	.leaflet {
-		top: calc(-1 * var(--bleed-top, 0px)); /* phones: also behind the status bar (app.css) */
-	}
-
-	/* Bottom right, above the attribution. Clear of the mobile footer (--buttons-bottom) and, with
-	   viewport-fit=cover, of the iPhone's home bar and notch (the safe-area insets). */
+	/* Bottom right, above the attribution. */
 	.buttons {
 		position: absolute;
-		z-index: 1050; /* over Leaflet's layers and controls (up to 1000), under the panel/footer (1100) */
-		right: calc(env(safe-area-inset-right) + 0.75rem);
-		bottom: calc(max(var(--buttons-bottom), env(safe-area-inset-bottom)) + 1.75rem);
+		z-index: 1050; /* over Leaflet's layers and controls (up to 1000) */
+		right: 0.75rem;
+		bottom: 1.75rem;
 	}
 
-	/* Leaflet creates these elements itself, hence :global. */
-	.leaflet :global(.leaflet-bottom) {
-		bottom: max(var(--buttons-bottom), env(safe-area-inset-bottom));
-	}
+	/* Desktop and landscape: the map fills the window, so keep clear of the iPhone's notch and
+	   home bar (the safe-area insets, with viewport-fit=cover). Leaflet creates its corners itself,
+	   hence :global. */
+	@media (min-width: 768px) {
+		.buttons {
+			right: calc(env(safe-area-inset-right) + 0.75rem);
+			bottom: calc(env(safe-area-inset-bottom) + 1.75rem);
+		}
 
-	.leaflet :global(.leaflet-right) {
-		right: env(safe-area-inset-right);
+		.leaflet :global(.leaflet-bottom) {
+			bottom: env(safe-area-inset-bottom);
+		}
+
+		.leaflet :global(.leaflet-right) {
+			right: env(safe-area-inset-right);
+		}
 	}
 
 	.leaflet :global(.latest-label) {

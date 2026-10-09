@@ -1,3 +1,13 @@
+<script lang="ts" module>
+	/**
+	 * The height of one event (a one-line title, its time, the gap below), in rem: the gap is
+	 * pb-3.5 (0.875), the title text-lg (1.75), the time a text-sm block (1.25). The last event has
+	 * no gap. MobileFooter sizes its list with these.
+	 */
+	export const EVENT_REM = 3.875;
+	export const EVENT_GAP_REM = 0.875;
+</script>
+
 <script lang="ts">
 	// The selected day's arrivals and departures, newest first, styled like the logo's two ends:
 	// a brick dot = arrived, a tangerine ring = left.
@@ -26,7 +36,7 @@
 	<ol>
 		{#each events as event, i (event.t + event.zone + event.transition)}
 			{@const next = events[i + 1]}
-			<li class="relative pb-3 pl-8 last:pb-0">
+			<li class="relative pb-3.5 pl-8 last:pb-0">
 				<!-- Dot and line are centred on the middle of the title's first line (top-3.5: half its
 				     1.75rem line height) and on the dot's middle (left-2: half its width). -->
 				{#if next}
@@ -43,7 +53,7 @@
 					aria-hidden="true"
 				></div>
 				<h3 class="text-lg font-semibold text-gray-900">{event.label}</h3>
-				<time datetime={event.t} class="text-sm text-gray-500">{clock(event.t)}</time>
+				<time datetime={event.t} class="block text-sm text-gray-500">{clock(event.t)}</time>
 			</li>
 		{/each}
 	</ol>
